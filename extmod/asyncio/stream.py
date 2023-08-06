@@ -27,6 +27,11 @@ class Stream:
         self.s.close()
 
     # async
+    def read_all(self, n):
+        yield core._io_queue.queue_read(self.s)
+        return self.s.read(n)
+
+    # async
     def read(self, n=-1):
         r = b""
         while True:
