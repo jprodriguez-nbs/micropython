@@ -72,8 +72,8 @@
 #define MICROPY_GC_SPLIT_HEAP_AUTO          (1)
 
 // extended modules
-#ifndef MICROPY_ESPNOW
-#define MICROPY_ESPNOW                      (1)
+#ifndef MICROPY_PY_ESPNOW
+#define MICROPY_PY_ESPNOW                   (1)
 #endif
 #ifndef MICROPY_PY_BLUETOOTH
 #define MICROPY_PY_BLUETOOTH                (1)
@@ -151,6 +151,11 @@
 #define MICROPY_FATFS_RPATH                 (2)
 #define MICROPY_FATFS_MAX_SS                (4096)
 #define MICROPY_FATFS_LFN_CODE_PAGE         437 /* 1=SFN/ANSI 437=LFN/U.S.(OEM) */
+
+// task size
+#ifndef MICROPY_TASK_STACK_SIZE
+#define MICROPY_TASK_STACK_SIZE             (16 * 1024)
+#endif
 
 #define MP_STATE_PORT MP_STATE_VM
 
