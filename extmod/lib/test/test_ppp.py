@@ -107,10 +107,10 @@ def get_uart():
     # MODEM_RX_PIN_OBJ = Pin(self.MODEM_RX_PIN, Pin.IN)  # Not needed as we use MODEM_RX_PIN
 
     # Define pins for unused signal DTR and RI
-    MODEM_DTR_PIN      = 32
-    MODEM_RI_PIN       = 33
-    MODEM_DTR_PIN_OBJ = machine.Pin(MODEM_DTR_PIN, machine.Pin.IN, pull=None) if MODEM_DTR_PIN is not None else None
-    MODEM_RI_PIN_OBJ = machine.Pin(MODEM_RI_PIN, machine.Pin.IN, pull=None) if MODEM_RI_PIN is not None else None
+    MODEM_DTR_PIN_OBJ = machine.Pin(PINOUT.MODEM_DTR_PIN, machine.Pin.IN, pull=None) if PINOUT.MODEM_DTR_PIN is not None else None
+    MODEM_RI_PIN_OBJ = machine.Pin(PINOUT.MODEM_RI_PIN, machine.Pin.IN, pull=None) if PINOUT.MODEM_RI_PIN is not None else None
+
+
 
     # Status setup
     if False:

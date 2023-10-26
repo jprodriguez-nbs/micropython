@@ -34,19 +34,23 @@ def press_modem_powerkey(on_pulse_duration_ms=1200):
 
     # Prepare
     if MODEM_RST_PIN_OBJ:
+        print ("Modem RST {p} => 0".format(p=PINOUT.MODEM_RST_PIN))
         MODEM_RST_PIN_OBJ.value(0)
+        
     utime.sleep_ms(125)
     if MODEM_RST_PIN_OBJ:
+        print ("Modem RST {p} => 1".format(p=PINOUT.MODEM_RST_PIN))
         MODEM_RST_PIN_OBJ.value(1)
         
     if MODEM_PWKEY_PIN_OBJ:
         # Set high level (pwkey off)
         v = PINOUT.MODEM_PWKEY_OFF
-        print("a MODEM_PWKEY_PIN OFF -> {v}".format(v=v))
+        print("a MODEM_PWKEY_PIN {p} OFF -> {v}".format(p= PINOUT.MODEM_PWKEY_PIN, v=v))
         MODEM_PWKEY_PIN_OBJ.value(v)
 
     # Power ON
     if MODEM_POWER_ON_PIN_OBJ:
+        print ("Modem power {p} ON => 1".format(p=PINOUT.MODEM_POWER_ON_PIN))
         MODEM_POWER_ON_PIN_OBJ.value(1)
     
     utime.sleep_ms(700)
@@ -57,7 +61,7 @@ def press_modem_powerkey(on_pulse_duration_ms=1200):
     if MODEM_PWKEY_PIN_OBJ:
         # Set low level (pwkey on)
         v = PINOUT.MODEM_PWKEY_ON
-        print("a MODEM_PWKEY_PIN ON -> {v}".format(v=v))
+        print("a MODEM_PWKEY_PIN {p} ON -> {v}".format(p= PINOUT.MODEM_PWKEY_PIN, v=v))
         MODEM_PWKEY_PIN_OBJ.value(v)
     utime.sleep_ms(on_pulse_duration_ms)
     
@@ -66,12 +70,12 @@ def press_modem_powerkey(on_pulse_duration_ms=1200):
     if MODEM_PWKEY_PIN_OBJ:
         # Set high level (pwkey off)ssss
         v = PINOUT.MODEM_PWKEY_OFF
-        print("a MODEM_PWKEY_PIN OFF -> {v}".format(v=v))
+        print("a MODEM_PWKEY_PIN {p} OFF -> {v}".format(p= PINOUT.MODEM_PWKEY_PIN, v=v))
         MODEM_PWKEY_PIN_OBJ.value(v)
     utime.sleep_ms(1800)
 
     # Set as input so pullup works
-    MODEM_PWKEY_PIN_OBJ = machine.Pin(PINOUT.MODEM_PWKEY_PIN, machine.Pin.IN, pull=None) if PINOUT.MODEM_PWKEY_PIN is not None else None
+    #MODEM_PWKEY_PIN_OBJ = machine.Pin(PINOUT.MODEM_PWKEY_PIN, machine.Pin.IN, pull=None) if PINOUT.MODEM_PWKEY_PIN is not None else None
 
 
 
@@ -109,24 +113,24 @@ def get_uart():
     # MODEM_RX_PIN_OBJ = Pin(self.MODEM_RX_PIN, Pin.IN)  # Not needed as we use MODEM_RX_PIN
 
     # Define pins for unused signal DTR and RI
-    MODEM_DTR_PIN      = 32
-    MODEM_RI_PIN       = 33
-    MODEM_DTR_PIN_OBJ = machine.Pin(MODEM_DTR_PIN, machine.Pin.IN, pull=None) if MODEM_DTR_PIN is not None else None
-    MODEM_RI_PIN_OBJ = machine.Pin(MODEM_RI_PIN, machine.Pin.IN, pull=None) if MODEM_RI_PIN is not None else None
+    MODEM_DTR_PIN_OBJ = machine.Pin(PINOUT.MODEM_DTR_PIN, machine.Pin.IN, pull=None) if PINOUT.MODEM_DTR_PIN is not None else None
+    MODEM_RI_PIN_OBJ = machine.Pin(PINOUT.MODEM_RI_PIN, machine.Pin.IN, pull=None) if PINOUT.MODEM_RI_PIN is not None else None
 
 
     # Prepare
     if MODEM_RST_PIN_OBJ:
+        print ("MODEM RST {p} -> 1".format(p=modem_rst_pin))
         MODEM_RST_PIN_OBJ.value(1)
         
     if MODEM_PWKEY_PIN_OBJ:
         # Set high level (pwkey off)
         v = MODEM_PWKEY_OFF
-        print("t MODEM_PWKEY_PIN OFF -> {v}".format(v=v))
+        print("t MODEM_PWKEY_PIN {p} OFF -> {v}".format(p=modem_pwkey_pin, v=v))
         MODEM_PWKEY_PIN_OBJ.value(v)
 
     # Power ON
     if MODEM_POWER_ON_PIN_OBJ:
+        print ("MODEM POWER_ON {p} -> 1".format(p=modem_power_on_pin))
         MODEM_POWER_ON_PIN_OBJ.value(1)
     
     time.sleep(1)
@@ -137,7 +141,7 @@ def get_uart():
     if MODEM_PWKEY_PIN_OBJ:
         # Set low level (pwkey on)
         v = MODEM_PWKEY_ON
-        print("t MODEM_PWKEY_PIN ON -> {v}".format(v=v))
+        print("t MODEM_PWKEY_PIN {p} ON -> {v}".format(p=modem_pwkey_pin, v=v))
         MODEM_PWKEY_PIN_OBJ.value(v)
     time.sleep(1)
     
@@ -146,14 +150,15 @@ def get_uart():
     if MODEM_PWKEY_PIN_OBJ:
         # Set high level (pwkey off)ssss
         v = MODEM_PWKEY_OFF
-        print("MODEM_PWKEY_PIN OFF -> {v}".format(v=v))
+        print("MODEM_PWKEY_PIN {p} OFF -> {v}".format(p=modem_pwkey_pin, v=v))
         MODEM_PWKEY_PIN_OBJ.value(v)
         
 
     # Set as input so pullup works
-    MODEM_PWKEY_PIN_OBJ = machine.Pin(modem_pwkey_pin, machine.Pin.IN, pull=None) if modem_pwkey_pin is not None else None
+    #MODEM_PWKEY_PIN_OBJ = machine.Pin(modem_pwkey_pin, machine.Pin.IN, pull=None) if modem_pwkey_pin is not None else None
 
     if MODEM_RST_PIN_OBJ:
+        print ("MODEM RST {p} -> 0".format(p=modem_rst_pin))
         MODEM_RST_PIN_OBJ.value(0)
 
     start_ticks_ms = utime.ticks_ms()
@@ -163,11 +168,16 @@ def get_uart():
     # Setup UART
     print('Modem PPP - Setup modem UART {p} ...'.format(p=uart_port))
 
-    gsm = machine.UART(uart_port, baudrate=baudrate, timeout=250, timeout_char=100, rx=modem_rx_pin, tx=modem_tx_pin)
+    gsm = None
+    try:
+        gsm = machine.UART(uart_port, baudrate=baudrate, timeout=250, timeout_char=100, rx=modem_rx_pin, tx=modem_tx_pin)
+    except Exception as E:
+        print("Modem: Failed to open uart {p} with rx {rx} and tx {tx}: {e}".format(p=uart_port,rx=modem_rx_pin, tx=modem_tx_pin, e=str(E)))
 
 
     utime.sleep_ms(125)
     if MODEM_RST_PIN_OBJ:
+        print ("MODEM RST {p} -> 1".format(p=modem_rst_pin))
         MODEM_RST_PIN_OBJ.value(1)
 
     time_gap = 5000
@@ -388,18 +398,10 @@ class Modem():
         
         if sync is False:
             machine.reset()
-                    
-        # 'AT+CNCFG=?', 'AT+CNCFG=0,0,"clnxpt.vf.global","Portugal","1234RTU",3'
-        # apn_cfg = 'AT+CNCFG=0,0,"{a}","{u}","{p}",3'.format(a=apn, u=user,p=pwd) # PAP and CHAP
-        apn_cfg = 'AT+CNCFG=0,0,"{a}","{u}","{p}",2'.format(a=apn, u=user,p=pwd) # Only CHAP
-        #pdp_auth_cfg = 'AT+CGAUTH=0,2,"{p}","{u}"'.format(u=user,p=pwd) # Only CHAP
-        
-                    
-        self.commands(['AT', 'ATE0', 'AT+CPIN?', 'AT+CREG=0', 'AT+CGREG=0', 'AT+CFUN=0', 'ATE0', 'ATE0', 'ATE0', 'ATE0', 'AT+CFUN=1,1', 'ATE0', 'ATE0', 'ATE0', 'ATE0', 'ATE0', 'ATE0', 'AT+CPIN?', 'AT+CFUN=0', 'ATE0', 'ATE0', 'ATE0', 'AT+CNMP=51', 'AT+CMNB=2', apn_cfg,'AT+CFUN=1', 'ATE0', 'ATE0', 'ATE0', 'AT+CFUN=?', 'AT+GMR', 'AT+GSN', 'AT+CREG?', 'AT+CGREG?'])
-        self.commands(['AT+CFUN=0', 'ATE0', 'ATE0', 'ATE0','AT+CGDCONT=?', 'AT+CGDCONT=1,"IP",""', 'AT+CNMP=?', 'AT+CNMP=51', 'AT+CMNB=?', 'AT+CMNB=2','AT+CNCFG=?',apn_cfg,'AT+CFUN=1', 'ATE0', 'ATE0', 'ATE0'])
-        
-        self.commands(['AT+CSQ', 'AT+CGNAPN', 'AT+CPSI?', 'AT+SECMEN=1', 'AT+COPS?', 'AT+CGNAPN', 'AT+SECMAUTH?', apn_cfg, 'AT+CGATT?', 'AT+CGNAPN'])
-        self.commands(['AT+CNACT=?','AT+CNACT?','AT+CNACT=0,2','AT+CNACT?'])
+              
+        li_commands = PINOUT.GetPPPCommands(apn, user, pwd)
+                             
+        self.commands(li_commands)
         
         (csq_result, csq_status_m) = self.command('AT+CSQ', 5, 'CSQ:\s*(\d+),(\d+)')
         (rssi, ber) = self.calc_rssi(csq_status_m)
@@ -415,12 +417,17 @@ class Modem():
         
         creg_result = False
         cgreg_result = False
+        creg_status_m = None
+        cgreg_status_m = None
+        (creg_result, creg_status_m) = self.command('AT+CREG?', 2, 'CREG: (0,[15])')
+        
         for idx in range(50):
-            if not creg_result:
-                (creg_result, creg_status_m) = self.command('AT+CREG?', 2, 'CREG: (0,[15])')
+            if PINOUT.WAIT_FOR_CREG:
+                if not creg_result:
+                    (creg_result, creg_status_m) = self.command('AT+CREG?', 2, 'CREG: (0,[15])')
             if not cgreg_result:
                 (cgreg_result, cgreg_status_m) = self.command('AT+CGREG?', 2, 'CGREG: (0,[15])')
-            if creg_result and cgreg_result:
+            if (PINOUT.WAIT_FOR_CREG is False or creg_result) and cgreg_result:
                 break
             
         (csq_result, csq_status_m) = self.command('AT+CSQ', 5, 'CSQ:\s*(\d+),(\d+)')
@@ -430,8 +437,16 @@ class Modem():
         (rssi, ber) = self.calc_rssi(csq_status_m)
         iccid = self.get_group(iccid_status_m,2)
         imei = self.get_group(imei_status_m,2)
-        creg = self.get_group(creg_status_m,0)
-        cgreg = self.get_group(cgreg_status_m,0)
+        
+        if creg_status_m is not None:
+            creg = self.get_group(creg_status_m,0)
+        else:
+            creg = None
+            
+        if cgreg_status_m is not None:
+            cgreg = self.get_group(cgreg_status_m,0)
+        else:
+            cgreg = None
         
         print ('PIN -> {r} {s}'.format(r=cpin_result, s=cpin_status))
         print ('GMR -> {r} {s}'.format(r=gmr_result, s=revision))
@@ -441,7 +456,7 @@ class Modem():
         print ('CREG -> {r} {s}'.format(r=creg_result, s=creg))
         print ('CGREG -> {r} {s}'.format(r=cgreg_result, s=cgreg))
         
-        self.command('ATD*99#')
+        self.commands(['AT+CNACT?','ATD*99#'])
         ppp = self.attachGSMtoPPP()
         return (iccid, imei, rssi, revision, ppp)
 

@@ -2,7 +2,8 @@ import logging as ulogging
 import io
 import sys
 import gc
-from frozen.networkmgr import NetworkMgr
+#from frozen.networkmgr import NetworkMgr
+from networkmgr import NetworkMgr
 import uasyncio as asyncio
 
 

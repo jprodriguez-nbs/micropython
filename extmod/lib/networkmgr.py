@@ -46,6 +46,8 @@ class NetworkMgr(object):
     _reference_ticks_ms = utime.ticks_ms()
     _wificonnected = False
     _pppconnected = False
+    _wifi_ip = None
+    _ppp_ip = None
     _wifi_connection_parameters = None
     _ppp_connection_parameters = None
     __config = CFG.config()
@@ -151,15 +153,18 @@ class NetworkMgr(object):
         MODEM_POWER_ON_PIN_OBJ = machine.Pin(PINOUT.MODEM_POWER_ON_PIN, machine.Pin.OUT) if PINOUT.MODEM_POWER_ON_PIN is not None else None
 
         if MODEM_RST_PIN_OBJ:
+            cls._logger.info("MODEM RST pin {p} -> 1".format(p=PINOUT.MODEM_RST_PIN))
             MODEM_RST_PIN_OBJ.value(1)
             
         if MODEM_PWKEY_PIN_OBJ:
+            cls._logger.info("MODEM PWKEY pin {p} -> {v}}".format(p=PINOUT.MODEM_PWKEY_PIN, v=PINOUT.MODEM_PWKEY_OFF))
             MODEM_PWKEY_PIN_OBJ.value(PINOUT.MODEM_PWKEY_OFF)
             await asyncio.sleep_ms(1800)
         if PINOUT.WDT_ENABLED:
             cls._wdt.feed()
 
         if MODEM_PWKEY_PIN_OBJ:
+            cls._logger.info("MODEM PWKEY pin {p} -> {v}}".format(p=PINOUT.MODEM_PWKEY_PIN, v=PINOUT.MODEM_PWKEY_ON))
             MODEM_PWKEY_PIN_OBJ.value(PINOUT.MODEM_PWKEY_ON)
             await asyncio.sleep_ms(500)
 
@@ -167,6 +172,8 @@ class NetworkMgr(object):
             cls._wdt.feed()
 
         if MODEM_POWER_ON_PIN_OBJ:
+            # Power off the modem
+            cls._logger.info("MODEM POWER_ON pin {p} -> 0}".format(p=PINOUT.MODEM_POWER_ON_PIN))
             MODEM_POWER_ON_PIN_OBJ.value(0)
             await asyncio.sleep_ms(500)
             
@@ -182,6 +189,7 @@ class NetworkMgr(object):
         # In order to ensure that SIM800L is power down while CPU is booting, we will leave
         # this pin as Pin.OUT and value 0 when goint to sleep
         if MODEM_PWKEY_PIN_OBJ:
+            cls._logger.info("MODEM PWKEY pin {p} -> {v}}".format(p=PINOUT.MODEM_PWKEY_PIN, v=PINOUT.MODEM_PWKEY_OFF))
             MODEM_PWKEY_PIN_OBJ.value(PINOUT.MODEM_PWKEY_OFF)
         
         #MODEM_RST_PIN_OBJ = machine.Pin(PINOUT.MODEM_RST_PIN, machine.Pin.IN, pull=None)
@@ -224,6 +232,34 @@ class NetworkMgr(object):
         return cls._pppconnected
 
     @classmethod
+    def wifi_ip(cls):
+        if cls._wlan is not None:
+            cls._wifi_ip = cls._wlan.ifconfig()
+        return cls._wifi_ip
+    
+    @classmethod
+    def ppp_ip(cls):
+        if cls._ppp is not None:
+            cls._ppp_ip = cls._ppp.ifconfig()
+        return cls._ppp_ip
+
+
+    @classmethod
+    def connection_str(cls):
+        
+        _ppp_connected = cls.ppp_connected()
+        _ppp_ip = cls.ppp_ip()
+        
+        _wifi_connected = cls.wifi_connected()
+        _wifi_ip = cls.wifi_ip()
+        
+        ppp_str = _ppp_ip if _ppp_connected else "NO"
+        wifi_str = _wifi_ip if _wifi_connected else "NO"
+        
+        result = "PPP {p}, WiFi {w}".format(p=ppp_str, w=wifi_str)
+        return result
+
+    @classmethod
     def iccid(cls):
         return cls._iccid
 
@@ -248,33 +284,34 @@ class NetworkMgr(object):
             gc.collect()
 
             cls.set_debug_level(logging.DEBUG)
-            url = PINOUT.INFO_PAGE
             
-            #server_hostname = 'intxmdcotp02.sdg.abertistelecom.local'
-            server_hostname = PINOUT.PING_TARGET
-
-            if server_hostname is not None and len(server_hostname):
+            if PINOUT.PING_ENABLED:                
+                #server_hostname = 'intxmdcotp02.sdg.abertistelecom.local'
+                server_hostname = PINOUT.PING_TARGET
+                if server_hostname is not None and len(server_hostname):
+                    try:
+                        ping_target = server_hostname
+                        #cls._logger.debug("Ping server: {hostname}".format(hostname=ping_target))
+                        print("Ping server: {hostname}".format(hostname=ping_target))
+                        uping.ping(ping_target)
+                    except Exception as ex:
+                        cls._logger.error("get_info_page.ping({h}) error: {e}".format(h=ping_target, e=str(ex)))
+                        
+                else:
+                    cls._logger.error("Server hostname is null or empty")
+            
+            if PINOUT.GET_INFO_PAGE_ENABLED:
+                url = PINOUT.INFO_PAGE
                 try:
-                    ping_target = server_hostname
-                    #cls._logger.debug("Ping server: {hostname}".format(hostname=ping_target))
-                    print("Ping server: {hostname}".format(hostname=ping_target))
-                    uping.ping(ping_target)
+                    #cls._logger.debug("Get info.php - URL: {url}".format(url=url))
+                    print("Get info.php - URL: {url}".format(url=url))
+                    response = await arequests.get(url, headers=GET_HEADERS)
+                    cls._logger.debug("{c}Content{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
                 except Exception as ex:
-                    cls._logger.error("get_info_page.ping({h}) error: {e}".format(h=ping_target, e=str(ex)))
+                    cls._logger.error("get_info_page({url}) error: {e}".format(url=url, e=str(ex)))
                     
-            else:
-                cls._logger.error("Server hostname is null or empty")
-            
-            try:
-                #cls._logger.debug("Get info.php - URL: {url}".format(url=url))
-                print("Get info.php - URL: {url}".format(url=url))
-                response = await arequests.get(url, headers=GET_HEADERS)
-                cls._logger.debug("{c}Content{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
-            except Exception as ex:
-                cls._logger.error("get_info_page({url}) error: {e}".format(url=url, e=str(ex)))
-                
-            if PINOUT.WDT_ENABLED:
-                cls._wdt.feed()
+                if PINOUT.WDT_ENABLED:
+                    cls._wdt.feed()
             gc.collect()
             
         except Exception as ex:
@@ -283,61 +320,65 @@ class NetworkMgr(object):
 
     @classmethod
     async def setup_time(cls):
-        bResult = False
-        #
-        # Set time
-        #
-        if cls.isconnected():
-            #ntptime.host = 'nz.pool.ntp.org'
-            #ntptime.host = '10.1.109.10'
-            ntptime.host = cls._ntp
-            
-            try:
+        if PINOUT.NTP_TIME_ENABLED:
+            bResult = False
+            #
+            # Set time
+            #
+            if cls.isconnected():
+                #ntptime.host = 'nz.pool.ntp.org'
+                #ntptime.host = '10.1.109.10'
+                ntptime.host = cls._ntp
                 
                 try:
-                    if PINOUT.WDT_ENABLED:
-                        cls._wdt.feed()
-
-                    #cls._logger.debug("Ping ntp server: {hostname}".format(hostname=cls._ntp))
-                    #uping.ping(cls._ntp)
-                    await cls.get_info_page()
                     
-                    
-                    if PINOUT.WDT_ENABLED:
-                        cls._wdt.feed()
-
                     try:
-                        #cls._logger.debug("NTP get time ... (Connected to WLAN = {c}, PPP = {c2}, ntp host={h})".format(c=cls._wificonnected, c2=cls._pppconnected,h=cls._ntp))
-                        print("NTP get time ... (Connected to WLAN = {c}, PPP = {c2}, ntp host={h})".format(c=cls._wificonnected, c2=cls._pppconnected,h=cls._ntp))
-                        ntptime.settime()
-                        utc_shift_h = float(CFG.params()[CFG.K_ADVANCED][CFG.K_ADV_UTC_SHIFT])
-                        utc_shift_s = int(utc_shift_h * 3600.0)
-                        tm = utime.localtime(utime.mktime(utime.localtime()) + utc_shift_s)
-                        tm = tm[0:3] + (0,) + tm[3:6] + (0,)
-                        cls._rtc.datetime(tm)
+                        if PINOUT.WDT_ENABLED:
+                            cls._wdt.feed()
 
-                        # (year, month, mday, week_of_year, hour, minute, second, milisecond)=RTC().datetime()
-                        # RTC().init((year, month, mday, week_of_year, hour+2, minute, second, milisecond)) # GMT correction. GMT+2
-                        dt = cls._rtc.datetime()
-                        ts_str = "{}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}.{:03d}".format(dt[0],dt[1],dt[2],dt[4],dt[5],dt[6],int(dt[7]/1000))
-                        cls._logger.debug ("Fecha/Hora (year, month, mday, week of year, hour, minute, second, milisecond): {ts_str}".format(ts_str=ts_str))
+                        #cls._logger.debug("Ping ntp server: {hostname}".format(hostname=cls._ntp))
+                        #uping.ping(cls._ntp)
+                        await cls.get_info_page()
+                        
+                        
+                        if PINOUT.WDT_ENABLED:
+                            cls._wdt.feed()
+
+                        try:
+                            #cls._logger.debug("NTP get time ... (Connected to WLAN = {c}, PPP = {c2}, ntp host={h})".format(c=cls._wificonnected, c2=cls._pppconnected,h=cls._ntp))
+                            print("NTP get time ... (Connected to WLAN = {c}, PPP = {c2}, ntp host={h})".format(c=cls._wificonnected, c2=cls._pppconnected,h=cls._ntp))
+                            ntptime.settime()
+                            utc_shift_h = float(CFG.params()[CFG.K_ADVANCED][CFG.K_ADV_UTC_SHIFT])
+                            utc_shift_s = int(utc_shift_h * 3600.0)
+                            tm = utime.localtime(utime.mktime(utime.localtime()) + utc_shift_s)
+                            tm = tm[0:3] + (0,) + tm[3:6] + (0,)
+                            cls._rtc.datetime(tm)
+
+                            # (year, month, mday, week_of_year, hour, minute, second, milisecond)=RTC().datetime()
+                            # RTC().init((year, month, mday, week_of_year, hour+2, minute, second, milisecond)) # GMT correction. GMT+2
+                            dt = cls._rtc.datetime()
+                            ts_str = "{}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}.{:03d}".format(dt[0],dt[1],dt[2],dt[4],dt[5],dt[6],int(dt[7]/1000))
+                            cls._logger.debug ("Fecha/Hora (year, month, mday, week of year, hour, minute, second, milisecond): {ts_str}".format(ts_str=ts_str))
+                        except Exception as ex:
+                            cls._logger.exc(ex,"NTP error: {e}".format(e=str(ex)))
+
                     except Exception as ex:
                         cls._logger.exc(ex,"NTP error: {e}".format(e=str(ex)))
+                        bResult = False
 
-                except Exception as ex:
-                    cls._logger.exc(ex,"NTP error: {e}".format(e=str(ex)))
+    
+
+                    if PINOUT.WDT_ENABLED:
+                        cls._wdt.feed()
+                    
+                    
+
+                except OSError as ex:
+                    cls._logger.exc(ex,"NTP failed - OSError: {e}".format(e=str(ex)))
                     bResult = False
 
- 
-
-                if PINOUT.WDT_ENABLED:
-                    cls._wdt.feed()
-                
-                
-
-            except OSError as ex:
-                cls._logger.exc(ex,"NTP failed - OSError: {e}".format(e=str(ex)))
-                bResult = False
+        else:
+            bResult = True
 
         return bResult
 
@@ -433,28 +474,35 @@ class NetworkMgr(object):
             if cls._modem is None:
                 cls._modem = Modem(None)
 
-            # PPP communication
-            cls._logger.debug('{c}Connect PPP...{n}'.format(c=colors.BOLD_GREEN,n=colors.NORMAL))
-            (cls._iccid, cls._imei, cls._rssi, cls._revision, cls._ppp) = cls._modem.connect(apn=cls._apn, user=cls._ppp_user, pwd=cls._ppp_password)
-            if cls._ppp is not None:
-                cls._pppconnected = cls._ppp.isconnected()
-                if cls._pppconnected:
-                    cls._ppp_connection_parameters = cls._ppp.ifconfig()
-                    cls._ppp_ip = cls._ppp_connection_parameters[0]
-                    cls._logger.info('{c}PPP connection established. IP = {ip} {n}, ICCID={iccid}'.format(
-                        ip=str(cls._ppp_ip), c=colors.BOLD_GREEN, n=colors.NORMAL, iccid=str(cls._iccid)))
-                    cls._connection_event.set()
-            if cls._iccid is not None:
-                if CFG.K_ICCID in cls.__config[CFG.K_GPRS]:
-                    current_iccid = cls.__config[CFG.K_GPRS][CFG.K_ICCID]
-                else:
-                    current_iccid = None
-                if cls._iccid != current_iccid:
-                    cls.__config[CFG.K_GPRS][CFG.K_ICCID] = cls._iccid
-                    # Update in flash
-                    CFG.set_config(cls.__config)
-                    
-            await cls.get_info_page()
+            if cls._ppp is None or cls._ppp.isconnected() is False:
+                # PPP communication
+                cls._logger.debug('{c}Connect PPP...{n} ({ppp})'.format(c=colors.BOLD_GREEN,n=colors.NORMAL, ppp='None' if cls._ppp is None else  cls._ppp.isconnected()))
+                
+                if cls._ppp is not None:
+                    # Clear
+                    del cls._ppp
+                    cls._ppp = None
+                
+                (cls._iccid, cls._imei, cls._rssi, cls._revision, cls._ppp) = cls._modem.connect(apn=cls._apn, user=cls._ppp_user, pwd=cls._ppp_password)
+                if cls._ppp is not None:
+                    cls._pppconnected = cls._ppp.isconnected()
+                    if cls._pppconnected:
+                        cls._ppp_connection_parameters = cls._ppp.ifconfig()
+                        cls._ppp_ip = cls._ppp_connection_parameters[0]
+                        cls._logger.info('{c}PPP connection established. IP = {ip} {n}, ICCID={iccid}'.format(
+                            ip=str(cls._ppp_ip), c=colors.BOLD_GREEN, n=colors.NORMAL, iccid=str(cls._iccid)))
+                        cls._connection_event.set()
+                if cls._iccid is not None:
+                    if CFG.K_ICCID in cls.__config[CFG.K_GPRS]:
+                        current_iccid = cls.__config[CFG.K_GPRS][CFG.K_ICCID]
+                    else:
+                        current_iccid = None
+                    if cls._iccid != current_iccid:
+                        cls.__config[CFG.K_GPRS][CFG.K_ICCID] = cls._iccid
+                        # Update in flash
+                        CFG.set_config(cls.__config)
+                        
+                await cls.get_info_page()
 
 
         except Exception as ex:
@@ -481,12 +529,17 @@ class NetworkMgr(object):
         while (cls._stop is False):
             try:
                 if cls.isconnected() is False:
+                    cls._logger.debug("connection_task - Is connected: PPP {ppp}, WiFi {wifi} -> {c}".format(
+                        ppp='None' if cls._ppp is None else cls.ppp_connected(), 
+                        wifi='None' if cls._wlan is None else cls.wifi_connected(), 
+                        c=cls.isconnected()))
                     
                     if PINOUT.CONNECTION_PRIORITY[0] == 'ppp':
                         # Priority is PPP
                         can_ppp = CFG.can_ppp()
                         if can_ppp:
-                            await cls.ppp_connect()
+                            if cls.isconnected() is False:
+                                await cls.ppp_connect()
                             cls._ppp_error = cls._pppconnected is False
                         else:
                             cls._logger.debug("Cannot connect to PPP because there is no APN configured-> Skip")
@@ -502,7 +555,8 @@ class NetworkMgr(object):
                     else:
                         # Priority is wifi
                         if PINOUT.WIFI_ENABLED:
-                            await cls.connect_wlan()
+                            if cls.isconnected() is False:
+                                await cls.connect_wlan()
                             cls._wifi_error = cls._wificonnected is False
                         if cls.isconnected() is False: 
                             # Backup is PPP
@@ -529,8 +583,11 @@ class NetworkMgr(object):
             if PINOUT.WDT_ENABLED:
                 cls._wdt.feed()
 
-        cls._logger.debug("Close connection and release resources")
-        await cls.hard_stop()
+        cls._logger.debug("connection_task STOP -> Close connection and release resources")
+        try:
+            await asyncio.wait_for(cls.hard_stop(), timeout = 5)
+        except asyncio.TimeoutError:
+            pass
         
         cls._stop_event.set()
         cls._logger.debug("Exit Connection task")
@@ -539,20 +596,21 @@ class NetworkMgr(object):
 
     @classmethod
     async def setuptime_task(cls):
-        cls._logger.debug("SetupTime task started")
-        ts_now = utime.time()
-        idx = 0
-        while (ts_now < 601432115) and (cls._stop is False) and (idx < 10):
-            if cls.isconnected():
-                ts_now = utime.time()
-                if ts_now < 601432115:
-                    # Time is not set
-                    await cls.setup_time()
-            await asyncio.sleep(2)
-            if PINOUT.WDT_ENABLED:
-                cls._wdt.feed()
-            idx = idx + 1
-        cls._logger.debug("Exit SetupTime task")
+        if PINOUT.NTP_TIME_ENABLED:
+            cls._logger.debug("SetupTime task started")
+            ts_now = utime.time()
+            idx = 0
+            while (ts_now < 601432115) and (cls._stop is False) and (idx < 10):
+                if cls.isconnected():
+                    ts_now = utime.time()
+                    if ts_now < 601432115:
+                        # Time is not set
+                        await cls.setup_time()
+                await asyncio.sleep(2)
+                if PINOUT.WDT_ENABLED:
+                    cls._wdt.feed()
+                idx = idx + 1
+            cls._logger.debug("Exit SetupTime task")
         cls._tasks.pop("setup_time", None)
 
     @classmethod
@@ -562,8 +620,9 @@ class NetworkMgr(object):
         if _is_running is False:
             if "connection" not in cls._tasks:
                 cls._tasks["connection"] = asyncio.create_task(cls.connection_task())
-            if "setup_time" not in cls._tasks:
-                cls._tasks["setup_time"] = asyncio.create_task(cls.setuptime_task())
+            if PINOUT.NTP_TIME_ENABLED:
+                if "setup_time" not in cls._tasks:
+                    cls._tasks["setup_time"] = asyncio.create_task(cls.setuptime_task())
             _is_running = True
 
     @classmethod
