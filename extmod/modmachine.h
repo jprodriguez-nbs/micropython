@@ -114,7 +114,7 @@
         } \
     } while (0)
 
-#if MICROPY_PY_MACHINE_I2C
+#if MICROPY_PY_MACHINE_I2C || MICROPY_PY_MACHINE_SOFTI2C
 
 #define MP_MACHINE_I2C_FLAG_READ (0x01) // if not set then it's a write
 #define MP_MACHINE_I2C_FLAG_STOP (0x02)
@@ -128,6 +128,7 @@
 
 // A port must provide these types, but they are otherwise opaque.
 typedef struct _machine_adc_obj_t machine_adc_obj_t;
+typedef struct _machine_adc_block_obj_t machine_adc_block_obj_t;
 typedef struct _machine_i2s_obj_t machine_i2s_obj_t;
 typedef struct _machine_pwm_obj_t machine_pwm_obj_t;
 typedef struct _machine_uart_obj_t machine_uart_obj_t;
@@ -138,7 +139,7 @@ typedef struct _machine_mem_obj_t {
     unsigned elem_size; // in bytes
 } machine_mem_obj_t;
 
-#if MICROPY_PY_MACHINE_I2C
+#if MICROPY_PY_MACHINE_I2C || MICROPY_PY_MACHINE_SOFTI2C
 
 typedef struct _mp_machine_i2c_buf_t {
     size_t len;
@@ -174,7 +175,7 @@ typedef struct _mp_machine_soft_i2c_obj_t {
 
 #endif
 
-#if MICROPY_PY_MACHINE_SPI
+#if MICROPY_PY_MACHINE_SPI || MICROPY_PY_MACHINE_SOFTSPI
 
 // SPI protocol.
 typedef struct _mp_machine_spi_p_t {
@@ -200,6 +201,7 @@ extern const machine_mem_obj_t machine_mem32_obj;
 // Their Python bindings are implemented in extmod, and their implementation
 // is provided by a port.
 extern const mp_obj_type_t machine_adc_type;
+extern const mp_obj_type_t machine_adc_block_type;
 extern const mp_obj_type_t machine_i2c_type;
 extern const mp_obj_type_t machine_i2s_type;
 extern const mp_obj_type_t machine_mem_type;
@@ -213,15 +215,19 @@ extern const mp_obj_type_t machine_timer_type;
 extern const mp_obj_type_t machine_uart_type;
 extern const mp_obj_type_t machine_wdt_type;
 
-#if MICROPY_PY_MACHINE_I2C
+#if MICROPY_PY_MACHINE_SOFTI2C
 extern const mp_obj_type_t mp_machine_soft_i2c_type;
+#endif
+#if MICROPY_PY_MACHINE_I2C || MICROPY_PY_MACHINE_SOFTI2C
 extern const mp_obj_dict_t mp_machine_i2c_locals_dict;
 #endif
 
-#if MICROPY_PY_MACHINE_SPI
+#if MICROPY_PY_MACHINE_SOFTSPI
 extern const mp_obj_type_t mp_machine_soft_spi_type;
-extern const mp_obj_dict_t mp_machine_spi_locals_dict;
 extern const mp_machine_spi_p_t mp_machine_soft_spi_p;
+#endif
+#if MICROPY_PY_MACHINE_SPI || MICROPY_PY_MACHINE_SOFTSPI
+extern const mp_obj_dict_t mp_machine_spi_locals_dict;
 #endif
 
 #if defined(MICROPY_MACHINE_MEM_GET_READ_ADDR)
@@ -231,9 +237,17 @@ uintptr_t MICROPY_MACHINE_MEM_GET_READ_ADDR(mp_obj_t addr_o, uint align);
 uintptr_t MICROPY_MACHINE_MEM_GET_WRITE_ADDR(mp_obj_t addr_o, uint align);
 #endif
 
+NORETURN mp_obj_t machine_bootloader(size_t n_args, const mp_obj_t *args);
 void machine_bitstream_high_low(mp_hal_pin_obj_t pin, uint32_t *timing_ns, const uint8_t *buf, size_t len);
 mp_uint_t machine_time_pulse_us(mp_hal_pin_obj_t pin, int pulse_level, mp_uint_t timeout_us);
 
+MP_DECLARE_CONST_FUN_OBJ_0(machine_unique_id_obj);
+MP_DECLARE_CONST_FUN_OBJ_0(machine_reset_obj);
+MP_DECLARE_CONST_FUN_OBJ_0(machine_reset_cause_obj);
+MP_DECLARE_CONST_FUN_OBJ_VAR_BETWEEN(machine_freq_obj);
+MP_DECLARE_CONST_FUN_OBJ_VAR_BETWEEN(machine_lightsleep_obj);
+MP_DECLARE_CONST_FUN_OBJ_VAR_BETWEEN(machine_deepsleep_obj);
+MP_DECLARE_CONST_FUN_OBJ_VAR_BETWEEN(machine_bootloader_obj);
 MP_DECLARE_CONST_FUN_OBJ_VAR_BETWEEN(machine_bitstream_obj);
 MP_DECLARE_CONST_FUN_OBJ_VAR_BETWEEN(machine_time_pulse_us_obj);
 
