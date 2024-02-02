@@ -11,8 +11,7 @@ import binascii
 from micropython import const
 
 import umdc_pinout as PINOUT
-#import wifimgr as wifimgr
-import tools
+import wifimgr as wifimgr
 
 from constants import *
 
@@ -38,7 +37,7 @@ _logger.setLevel(logging.DEBUG)
 
 def _default_config():
     return {
-            K_ID: "89882390000530689234",
+            K_ID: "J0001",
             K_TZ: "Europe/Madrid",
             K_WIFI: [
                 "PS118_Guest1;1rbi.d3rmi$",
@@ -46,40 +45,24 @@ def _default_config():
             ],
             K_AP: "ud-umdc",
             K_PROTOCOL: "https",
-            K_AGENT_INT: "10.1.152.102:8282",
-            K_AGENT_EXT: "10.1.152.102:8282",
-            K_MQTT_BROKER_HOST: "10.1.152.102",
+            K_AGENT_INT: "intxmdcotp02.sdg.abertistelecom.local:8282",
+            K_AGENT_EXT: "intxmdcotp02.sdg.abertistelecom.local:8282",
             K_MQTT_BROKER_PORT: "8883",
-            K_MQTT_USER: "exatronic",
-            K_MQTT_PSW: "33xaAt.r0ny0",
-            K_NTP: "10.1.152.102",
+            K_NTP: "intxmdcotp02.sdg.abertistelecom.local",
             K_GPRS: {
                 K_APN: "clnxpt.vf.global",
                 K_USER: "Portugal",
                 K_PSW: "1234RTU",
-                K_ICCID:"89882390000530689234"
-            },
-            K_UPDATE_HOST: "http://10.1.167.64/",
-            K_UPDATE_HOST_TYPE: "gitlab"
+                K_ICCID:"0"
+            }
         }
 
 
 def _default_params():
     return {
-                K_ID:"89882390000530689234",
-
-                K_RS485: "{9600;2}",
-                K_IOS: "{1;0;0;0;0;0;0;0;0;0;0;0}",
-                K_EI: "{0;0}",
-                K_MESSAGES:{
-                    K_ACQUISITION_TIME: 5,
-                    K_REPORT_TIME: 60,
-                    K_REQUESTS:["020300000006c5fb","0203000e0002a5fb","020300120002643d","0203005a0001a42a"]
-                },
+                
                 K_ADVANCED : {
-                    K_ADV_UTC_SHIFT : PINOUT.UTC_SHIFT,
-                    K_ADV_V_BATT_LOW: 3.2,
-                    K_ADV_V_BATT_DEAD: 3
+                    K_ADV_UTC_SHIFT : PINOUT.UTC_SHIFT
                 }
             }
 
@@ -93,32 +76,6 @@ def config():
 def params():
     global _params
     return _params
-
-
-def mb_params():
-    global _params
-    result = None
-    if K_RS485 not in _params:
-        init()
-    try:   
-        if K_RS485 in _params:
-            rs485_v = _params[K_RS485]
-        if rs485_v is None or len(rs485_v)==0:
-            rs485_v = '{9600:3}' # Default value
-        li_parts = tools.get_parts(rs485_v)
-        baudrate = int(li_parts[0])
-        format = str(li_parts[1])
-        
-        if format in D_SERIAL_FORMAT:
-            result = D_SERIAL_FORMAT[format].copy()
-        else:
-            result = D_SERIAL_FORMAT["3"].copy()
-            
-        result['baudrate'] = baudrate
-    except Exception as ex:
-        print("Failed to get Modbus parameters: {e}".format(e=str(ex)))
-    return result
-
 
 
 def can_ppp():
@@ -141,15 +98,6 @@ def umdc_id():
         init()
     return _config[K_ID] if K_ID in _config else 0
 
-
-def ota_parameters():
-    if K_ID not in _config:
-        init()
-    update_host = _config[K_UPDATE_HOST]
-    update_host_type = config[K_UPDATE_HOST_TYPE]
-    is_gitlab = update_host_type == 'gitlab'
-    return (update_host, is_gitlab)
-
 def _store_config(c_str):
     with open(_CONFIG_FN, "w") as f:
         f.write(c_str)
@@ -167,9 +115,7 @@ def update_wifi_config(c):
         wifi_dat = c[K_WIFI]
     else:
         wifi_dat = None
-    if PINOUT.WIFI_ENABLED:
-        import wifimgr as wifimgr
-        wifimgr.update_wifi_cfg(ap_cfg,wifi_dat)
+    wifimgr.update_wifi_cfg(ap_cfg,wifi_dat)
 
 def set_config(c):
     global _config
@@ -202,82 +148,7 @@ def calc_params_hash(p):
         sd = hashlib.sha256(p_str).digest()
         return (sd, p_str)
 
-DEBUG_COMPARE = False
-
-def compare_values(v, v2) -> bool:
-    if DEBUG_COMPARE:
-        m = "\nCompare '{v}' ('{t}') with '{v2}' ('{t2}') ... ".format(
-                v=str(v),t=str(type(v)),
-                v2=str(v2),t2=str(type(v2))
-            )
-        sys.stdout.write(m)
-    
-    is_equal = True
-    if isinstance(v, str):
-        if v != v2:
-            is_equal = False
-    elif isinstance(v, dict):
-        is_equal = is_equal and compare_dict(v, v2)
-    elif isinstance(v, list):
-        if len(v) != len(v2):
-            is_equal = False
-        else:
-            for i in range(len(v)):
-                if v[i] != v2[i]:
-                    is_equal = False
-                    break
-    elif isinstance(v, (float,int)):
-        if v != v2:
-            is_equal = False
-            
-    else:
-        is_equal = False
-
-    if DEBUG_COMPARE:
-        print ("EQUAL" if is_equal else "DIFFERENT")
-
-    return is_equal
-
-def compare_dict(old_p: dict, new_p: dict) -> bool:
-    is_equal = True
-    
-    for k,v in old_p.items():
-        if k in new_p:
-            v2 = new_p[k]
-        else:
-            is_equal = False
-            break
-        is_equal = is_equal and compare_values(v, v2)
-        if is_equal is False:
-            break
-    
-    return is_equal
-
-
-def update_params_key(k, v2) -> bool:
-    try:
-        has_changed = False
-        is_equal = False
-        if k in _params:
-            v = _params[k]
-            is_equal = compare_values(v, v2)
-            
-        if is_equal is False:
-            has_changed = True
-            _params[k] = v2
-            p_str = ujson.dumps(_params)
-            (p_sd, l_str2) = calc_params_hash(_params)
-            _logger.debug("Params have changed. Key '{k}' value has changed from '{v}' to '{v2}' -> update file.".format(k=k, v=str(v), v2=str(v2)))
-            _store_params(p_str)
-
-            # Update params
-            _params_sd = p_sd
-    except Exception as ex:
-        _logger.exc(ex,"Failed to update_params_key")
-    gc.collect()
-    return has_changed
-
-def set_params(p: dict, from_store=False):
+def set_params(p, from_store=False):
     global _params
     global _params_sd
 
@@ -301,8 +172,7 @@ def set_params(p: dict, from_store=False):
         (p_sd, l_str2) = calc_params_hash(p)
         #if (p_sd != current_sd):
         #if (l_str != l_str2):
-        is_equal = compare_dict(_params, p)
-        if is_equal is False:
+        if (_params['ts'] != p['ts']):
             # params has changed. Update file
             # The stored parameters are used when there is no connectivity and params cannot be updated from the server
             _logger.debug("Previous params [hash: 0x{h}]: \n{s}".format(h=binascii.hexlify(current_sd), s=str(l_str)))

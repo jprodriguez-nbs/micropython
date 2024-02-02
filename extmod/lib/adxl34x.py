@@ -331,6 +331,21 @@ class ADXL345:
         }
         return r
 
+    def enable_watermark(self):
+        active_interrupts = self._read_register_unpacked(_REG_INT_ENABLE)
+        self._write_register_byte(_REG_INT_ENABLE, 0x0)  # disable interrupts for setup
+        active_interrupts |= 0b00000010  # Activate the watermark interrupt bit
+        self._write_register_byte(_REG_INT_ENABLE, active_interrupts)
+        self.logger.debug("ADXL34x: Enabled watermark interrupt.")
+
+    def disable_watermark(self):
+        active_interrupts = self._read_register_unpacked(_REG_INT_ENABLE)
+        self._write_register_byte(_REG_INT_ENABLE, 0x0)  # disable interrupts for setup
+        active_interrupts &= ~0b00000010  # Clear the watermark interrupt bit
+        self._write_register_byte(_REG_INT_ENABLE, active_interrupts)
+        self.logger.debug("ADXL34x: Disabled watermark interrupt.")
+
+
     def enable_motion_detection(self, *, threshold=18):
         """
         The activity detection parameters.

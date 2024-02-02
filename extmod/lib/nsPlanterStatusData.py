@@ -36,6 +36,9 @@ class PlanterStatusData(NsDataClass):
 
     KEY_DIO = "dio"
     KEY_ALARM = "alarm"
+    
+    KEY_SW_VERSION = "sw_ver"
+    KEY_FW_VERSION = "fw_ver"
 
     ALARM_BIT_BATT_LOW = 0x0001              # Alarm if battery voltage below 10.75V
     ALARM_BIT_BATT_DEAD = 0x0002             # Alarm if battery voltage below 10.4V
@@ -66,8 +69,10 @@ class PlanterStatusData(NsDataClass):
                 KEY_VPUMP, KEY_IPUMP, 
                 KEY_ALARM)
     # datetime string is 23 char: '2021/11/06 23:34:08.880'
-    packstring = '23sBffffffffffi'
-    packlength = struct.calcsize(packstring) # 68 #bytes
+    # sw_ver string is 8 char: xx.xx.xx
+    # fw_ver string is 8 char: xx.xx.xx
+    packstring = '23sBffffffffffi8s8s'
+    packlength = struct.calcsize(packstring) # 84 #bytes
 
     @property
     def dio(self):
@@ -258,7 +263,8 @@ class PlanterStatusData(NsDataClass):
                 , flow_lpm=0, rain_mmph=0
                 , vpv=0, ipv=0
                 , vbatt=0, ibatt=0
-                , vpump=0, ipump=0, alarm=0):
+                , vpump=0, ipump=0, alarm=0
+                , sw_ver='', fw_ver=''):
         super(PlanterStatusData, self).__init__(alarm)
         #self.ts = timetools.totimestamp(ts)
         self._ts = timetools.tostr(ts)
@@ -280,14 +286,17 @@ class PlanterStatusData(NsDataClass):
         self.ipump = ipump
         self.alarm = alarm
         self.water_level_sensor_detected = False
+        self.sw_ver = sw_ver
+        self.fw_ver = fw_ver
 
 
     def __repr__(self):
-        return "PlanterStatusData('{ts}',{pump_on},{power_3v_on},{power_5v_on},{power_12v_on},{level_low},{door_open},{soil_moisture_vwc},{soil_temperature_c},{flow_lpm},{rain_mmph},{vpv},{ipv},{vbatt},{ibatt},{vpump},{ipump},{alarm})".format(
+        return "PlanterStatusData('{ts}',{pump_on},{power_3v_on},{power_5v_on},{power_12v_on},{level_low},{door_open},{soil_moisture_vwc},{soil_temperature_c},{flow_lpm},{rain_mmph},{vpv},{ipv},{vbatt},{ibatt},{vpump},{ipump},{alarm},{sw_ver},{fw_ver})".format(
             ts=self.ts, pump_on=self.pump_on, power_3v_on=self.power_3v_on, power_5v_on=self.power_5v_on, power_12v_on=self.power_12v_on,
             level_low=self.level_low, door_open=self.door_open, soil_moisture_vwc=self.soil_moisture_vwc, soil_temperature_c=self.soil_temperature_c,
             flow_lpm=self.flow_lpm, rain_mmph=self.rain_mmph, vpv=self.vpv, ipv=self.ipv,
-            vbatt=self.vbatt, ibatt=self.ibatt, vpump=self.vpump, ipump=self.ipump, alarm=self.alarm)
+            vbatt=self.vbatt, ibatt=self.ibatt, vpump=self.vpump, ipump=self.ipump, alarm=self.alarm,
+            sw_ver=self.sw_ver, fw_ver=self.fw_ver)
 
     def to_dict(self):
         d = {
@@ -309,7 +318,9 @@ class PlanterStatusData(NsDataClass):
             PlanterStatusData.KEY_IBATT : self.ibatt,
             PlanterStatusData.KEY_VPUMP : self.vpump,
             PlanterStatusData.KEY_IPUMP : self.ipump,
-            PlanterStatusData.KEY_ALARM : self.alarm
+            PlanterStatusData.KEY_ALARM : self.alarm,
+            PlanterStatusData.KEY_SW_VERSION : self.sw_ver,
+            PlanterStatusData.KEY_FW_VERSION: self.fw_ver
         }
         return d
 
@@ -363,6 +374,10 @@ class PlanterStatusData(NsDataClass):
             self.ipump = d[PlanterStatusData.KEY_IPUMP]
         if PlanterStatusData.KEY_ALARM in d:
             self.alarm = d[PlanterStatusData.KEY_ALARM]
+        if PlanterStatusData.KEY_SW_VERSION in d:
+            self.sw_ver = d[PlanterStatusData.KEY_SW_VERSION]
+        if PlanterStatusData.KEY_FW_VERSION in d:
+            self.fw_ver = d[PlanterStatusData.KEY_FW_VERSION]
 
     def from_bin(self, p):
         sw = nsClassWriter.StructWriter()
@@ -375,7 +390,7 @@ class PlanterStatusData(NsDataClass):
         rtc = machine.RTC()
         dt = rtc.datetime()
         ts_str = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}.{:03d}".format(dt[0],dt[1],dt[2],dt[4],dt[5],dt[6],int(dt[7]/1000))
-        obj = PlanterStatusData(ts_str, False, True, True, True, False, False, 23.1, 25.4, 3.4, 0.0, 18.4, 0.7, 12.5, 0.069, 12.1, 1.3)
+        obj = PlanterStatusData(ts_str, False, True, True, True, False, False, 23.1, 25.4, 3.4, 0.0, 18.4, 0.7, 12.5, 0.069, 12.1, 1.3,'aa.bb.cc','dd.ee.ff')
         sw = nsClassWriter.StructWriter()
         p = sw.write(obj)
         print ("PlanterStatusData Original -> {o}".format(o=repr(obj)))

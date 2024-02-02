@@ -5,26 +5,19 @@ import gc
 from networkmgr import NetworkMgr
 import uasyncio as asyncio
 
-import hwversion
+
 
 _logger = ulogging.getLogger("UpdateUtils")
-
-_update_host = None
-_is_gitlab = None
 
 class UpdateUtils:
 
     @staticmethod
-    async def updateIfNecessary(update_host, is_gitlab):
-        global _update_host
-        global _is_gitlab
-        _update_host = update_host
-        _is_gitlab = is_gitlab
+    async def updateIfNecessary():
         # Limit the update to 600s
-        await asyncio.wait_for_ms(UpdateUtils.doUpdateIfNecessary(update_host, is_gitlab), 600000)
+        await asyncio.wait_for_ms(UpdateUtils.doUpdateIfNecessary(), 600000)
 
     @staticmethod
-    async def doUpdateIfNecessary(update_host, is_gitlab):
+    async def doUpdateIfNecessary():
         import machine, os
         try:
             #with open('.updateRequested', "r") as updateRequested:
@@ -39,7 +32,7 @@ class UpdateUtils:
                 _logger.info('Update requested...')
                 await UpdateUtils._connectToWifi()
                 await UpdateUtils._updateTimeUsingNTP()
-                updated = UpdateUtils._otaUpdate(update_host, is_gitlab)
+                updated = UpdateUtils._otaUpdate()
                 UpdateUtils._sendLogsToGithubGist()
                 if updated:
                     _logger.info('Updates finished, will reboot')
@@ -52,15 +45,8 @@ class UpdateUtils:
                 print(full_explanation)
                 _logger.error(full_explanation)
             
-            # Fix 'app/frozen/utils' directory so we can upload files in development
-            import tools
-            if tools.dir_exists('app/frozen/utils') is False:
-                import os
-                os.mkdir('app/frozen/utils')
-            
             if updated:
-                tools.do_reboot()
-                #machine.reset()
+                machine.reset()
             else:
                 gc.collect()
 
@@ -109,30 +95,15 @@ class UpdateUtils:
 
 
     @staticmethod
-    def _getRepositoryUrl(update_host, is_gitlab):
-        return '{h}nbs/cnx-umdc'.format(h=update_host)
-
-    @staticmethod
-    def _getHeaders(update_host, is_gitlab):
+    def _otaUpdate():
         import secrets as secrets
-        if is_gitlab is False:
-            headers = {
-                "Authorization": "token {t}".format(t=secrets.TOKEN)
-                }
-        else:
-            headers = {
-                "PRIVATE-TOKEN":  "{t}".format(t=secrets.TOKEN)
-                }
-        return headers
-
-    @staticmethod
-    def _otaUpdate(update_host, is_gitlab):
         ulogging.info('Checking for Updates...')
         from .ota_updater import OTAUpdater
-        #otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyumdc', github_src_dir='src', main_dir='app', secrets_file="secrets.py", extra_dirs=["www"])
-        headers = UpdateUtils._getHeaders(update_host, is_gitlab)
-        repo_url = UpdateUtils._getRepositoryUrl(update_host, is_gitlab)
-        otaUpdater = OTAUpdater(update_host, is_gitlab, repo_url, github_src_dir='src', main_dir='app', headers=headers, extra_dirs=["www"])
+        #otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyplanter', github_src_dir='src', main_dir='app', secrets_file="secrets.py", extra_dirs=["www"])
+        headers = {
+            "Authorization": "token {t}".format(t=secrets.TOKEN)
+            }
+        otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyplanter', github_src_dir='src', main_dir='app', headers=headers, extra_dirs=["www"])
         updated = otaUpdater.install_update_if_available()
         del(otaUpdater)
         return updated
@@ -156,26 +127,29 @@ class UpdateUtils:
 
 
     @staticmethod
-    def set_version_manually(update_host, is_gitlab, v):
+    def set_version_manually(v):
+        import secrets as secrets
         ulogging.info('Manually set version ...')
         from .ota_updater import OTAUpdater
-        #otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyumdc', github_src_dir='src', main_dir='app', secrets_file="secrets.py", extra_dirs=["www"])
-        headers = UpdateUtils._getHeaders()
-        repo_url = UpdateUtils._getRepositoryUrl()
-        otaUpdater = OTAUpdater(update_host, is_gitlab, repo_url, github_src_dir='src', main_dir='app', headers=headers, extra_dirs=["www"])
+        #otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyplanter', github_src_dir='src', main_dir='app', secrets_file="secrets.py", extra_dirs=["www"])
+        headers = {
+            "Authorization": "token {t}".format(t=secrets.TOKEN)
+            }
+        otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyplanter', github_src_dir='src', main_dir='app', headers=headers, extra_dirs=["www"])
         otaUpdater.update_current_version_file(v)
         new_v = otaUpdater.get_current_version()
         print ("Version changed to {new_v}".format(new_v=new_v))
         del(otaUpdater)
 
     @staticmethod
-    def get_current_version(update_host, is_gitlab):
+    def get_current_version():
+        import secrets as secrets
         from .ota_updater import OTAUpdater
-        #otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyumdc', github_src_dir='src', main_dir='app', secrets_file="secrets.py", extra_dirs=["www"])
-        headers = UpdateUtils._getHeaders()
-        repo_url = UpdateUtils._getRepositoryUrl()
-        project_id = UpdateUtils.get_project_id()
-        otaUpdater = OTAUpdater(update_host, is_gitlab, repo_url, github_src_dir='src', main_dir='app', headers=headers, extra_dirs=["www"])
+        #otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyplanter', github_src_dir='src', main_dir='app', secrets_file="secrets.py", extra_dirs=["www"])
+        headers = {
+            "Authorization": "token {t}".format(t=secrets.TOKEN)
+            }
+        otaUpdater = OTAUpdater('https://github.com/NearbySensors/ud-pyplanter', github_src_dir='src', main_dir='app', headers=headers, extra_dirs=["www"])
         new_v = otaUpdater.get_current_version()
         # print ("Current version is {new_v}".format(new_v=new_v))
         del(otaUpdater)

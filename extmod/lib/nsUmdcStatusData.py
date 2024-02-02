@@ -29,25 +29,19 @@ class UmdcStatusData(NsDataClass):
 
 
 
-    fields = (KEY_TS, KEY_VBATT, KEY_ALARM, KEY_DIO, KEY_AI1, KEY_AI2)
+    fields = (KEY_TS, KEY_DIO, KEY_VBATT, KEY_ALARM)
     # datetime string is 23 char: '2021/11/06 23:34:08.880'
-    packstring = '23sfiBff'
-    packlength = struct.calcsize(packstring) #  #bytes
+    packstring = '23sBfi'
+    packlength = struct.calcsize(packstring) # 30 #bytes
 
     @property
     def dio(self):
-        # Pack bits
         r = (0x01 if self.mcb else 0x00) 
-        r = (0x02 if self.di1 else 0x00) | r
-        r = (0x04 if self.di2 else 0x00) | r
         return r
 
     @dio.setter
     def dio(self, v):
-        # Unpack bits
         self.mcb = (v & 0x01) == 0x01
-        self.di1 = (v & 0x02) == 0x02
-        self.di2 = (v & 0x04) == 0x04
         
 
     @property
@@ -112,41 +106,24 @@ class UmdcStatusData(NsDataClass):
             self._logger.warning("CANNOT CONNECT TO INTERNET USING PPP THROUGH GPRS")
 
 
-    def __init__(self, ts='', vbatt=0, alarm=0, ac220=1, mcb=0, di1=0, di2=0, ai1=0, ai2=0):
+    def __init__(self, ts='', vbatt=0, alarm=0):
         super(UmdcStatusData, self).__init__(alarm)
         #self.ts = timetools.totimestamp(ts)
         self._ts = timetools.tostr(ts)
         self.vbatt = vbatt
         self.alarm = alarm
-        self.ac220 = ac220
-        self.mcb = mcb
-        self.di1 = di1
-        self.di2 = di2
-        self.ai1 = ai1
-        self.ai2 = ai2
-        
 
 
     def __repr__(self):
-        return "UmdcStatusData('{ts}',{vbatt},{alarm},{mcb},{di1},{di2},{ai1}.{ai2})".format(
+        return "UmdcStatusData('{ts}',{vbatt},{alarm})".format(
             ts=self.ts, 
-            vbatt=self.vbatt, alarm=self.alarm,
-            mcb = self.mcb,
-            di1 = self.di1,
-            di2 = self.di2,
-            ai1 = self.ai1,
-            ai2 = self.ai2,
-            )
+            vbatt=self.vbatt, alarm=self.alarm)
 
     def to_dict(self):
         d = {
-            KEY_TS : self.ts,
-            KEY_VBATT : self.vbatt,
-            KEY_ALARM : self.alarm,
-            KEY_DIO: self.dio,
-            KEY_AI1 : self.ai1,
-            KEY_AI2 : self.ai2
-            
+            UmdcStatusData.KEY_TS : self.ts,
+            UmdcStatusData.KEY_VBATT : self.vbatt,
+            UmdcStatusData.KEY_ALARM : self.alarm
         }
         return d
 
@@ -164,18 +141,12 @@ class UmdcStatusData(NsDataClass):
 
 
     def from_dict(self, d):
-        if KEY_TS in d:
-            self.ts = d[KEY_TS]
-        if KEY_VBATT in d:
-            self.vbatt = d[KEY_VBATT]
-        if KEY_ALARM in d:
-            self.alarm = d[KEY_ALARM]
-        if KEY_DIO in d:
-            self.dio = d[KEY_DIO]
-        if KEY_AI1 in d:
-            self.ai1 = d[KEY_AI1]
-        if KEY_AI2 in d:
-            self.ai2 = d[KEY_AI2]
+        if UmdcStatusData.KEY_TS in d:
+            self.ts = d[UmdcStatusData.KEY_TS]
+        if UmdcStatusData.KEY_VBATT in d:
+            self.vbatt = d[UmdcStatusData.KEY_VBATT]
+        if UmdcStatusData.KEY_ALARM in d:
+            self.alarm = d[UmdcStatusData.KEY_ALARM]
 
     def from_bin(self, p):
         sw = nsClassWriter.StructWriter()
@@ -188,7 +159,7 @@ class UmdcStatusData(NsDataClass):
         rtc = machine.RTC()
         dt = rtc.datetime()
         ts_str = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}.{:03d}".format(dt[0],dt[1],dt[2],dt[4],dt[5],dt[6],int(dt[7]/1000))
-        obj = UmdcStatusData(ts_str, 3.2, 0, True, False, 2.3, 3.1)
+        obj = UmdcStatusData(ts_str, 3.2, 0)
         sw = nsClassWriter.StructWriter()
         p = sw.write(obj)
         print ("UmdcStatusData Original -> {o}".format(o=repr(obj)))

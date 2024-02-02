@@ -34,19 +34,19 @@ _level_dict_color = {
 _stream = sys.stderr
 
 _traces = []
-_umdc_id = ""
+_planter_id = ""
 
 _webapp = None
 
-_MAX_TRACES = 20
+_MAX_TRACES = 200
 
 def set_webapp(webapp):
     global _webapp
     _webapp = webapp
 
-def set_id(umdc_id):
-    global _umdc_id
-    _umdc_id = umdc_id
+def set_id(planter_id):
+    global _planter_id
+    _planter_id = planter_id
 
 
 def clear_traces():
@@ -59,15 +59,15 @@ def get_traces():
 
 def _add_trace(**kwargs):
     global _traces
-    
-    # d = {
-    #         "ts": dt,
-    #         "id": _umdc_id,
-    #         "trace": msg
-    #     }
-    # for k,v in kwargs.items():
-    #     d[k]=v
-
+    """
+    d = {
+            "ts": dt,
+            "id": _planter_id,
+            "trace": msg
+        }
+    for k,v in kwargs.items():
+        d[k]=v
+    """
     _traces.append(kwargs)
 
     l = len(_traces)
@@ -168,7 +168,7 @@ class Logger:
                     kwargs["message"]=tools.remove_ascii_colors(msg)
                     kwargs["name"] = self.name
                     kwargs["ts"] = ts_str
-                    kwargs["id"] = _umdc_id
+                    kwargs["id"] = _planter_id
                     _add_trace(**kwargs)
                 
 
@@ -194,11 +194,7 @@ class Logger:
         sys.print_exception(e, _stream)    
 
     def exception(self, msg, *args):
-        try:
-            self.exc(sys.exc_info()[1], msg, *args)
-        except:
-            self.error(msg, *args)
-
+        self.exc(sys.exc_info()[1], msg, *args)
 
     def addHandler(self, hndlr):
         self.handlers.append(hndlr)

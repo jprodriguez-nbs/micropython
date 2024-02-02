@@ -24,12 +24,6 @@ import uasyncio as asyncio
 from time_it import asynctimeit, timed_function
 import binascii
 
-import colors
-
-import logging
-_logger = logging.getLogger("umodbus.async_serial")
-_logger.setLevel(logging.DEBUG)
-
 class AsyncSerial:
 
     def __init__(self, uart_id, baudrate=9600, data_bits=8, stop_bits=1, parity=None, pins=None, ctrl_pin=None, tx_pin=None, rx_pin=None):
@@ -57,7 +51,7 @@ class AsyncSerial:
         self._debug = False
         self._read_async = True
         
-        _logger.info("Built AsyncSerial(uart {id}, {br} bps, bits {db}, stop {sb}, parity {p}, pins {pins}, ctrl {ctrl_pin}, tx {tx_pin}, rx {rx_pin}), t35ch={t35ch} [ms]".format(
+        print("Built AsyncSerial({id}, {br} bps, {db}, {sb}, {p}, {pins}, ctrl {ctrl_pin}, tx {tx_pin}, rx {rx_pin}), t35ch={t35ch} [ms]".format(
             id=uart_id, br=baudrate, db=data_bits, sb=stop_bits, p=parity, pins=pins, ctrl_pin=ctrl_pin, tx_pin=tx_pin, rx_pin=rx_pin,
             t35ch = self._t35chars
         ))
@@ -149,36 +143,28 @@ class AsyncSerial:
             pass
 
     #@asynctimeit
-    async def _uart_read(self, outbound_pdu=None):
+    async def _uart_read(self):
         response = bytearray()
-        nopost = False
-        start_ts = time.ticks_us()
+
+        if self._debug:
+            start_ts = time.ticks_us()
 
         if self._read_async:
             for x in range(1, 40):
                 #if self._uart.any():
                 try:
-                    if self._debug:
-                        start_ts = time.ticks_us()                    
                     awaitable = self._uart_read_and_extend(self.sreader, response)
                     await asyncio.wait_for_ms(awaitable, timeout = 500)
                     # variable length function codes may require multiple reads
                     if self._exit_read(response):
                         if self._debug:
-                            _logger.debug("AsyncSerial.uart_read - exit read because response: {r}".format(r=binascii.hexlify(response).decode()))
+                            print("AsyncSerial.uart_read - exit read because response: {r}".format(r=binascii.hexlify(response)))
                         break
                 except asyncio.TimeoutError:
                     if self._debug:
                         now_ts = time.ticks_us()
                         elapsed_us = (now_ts-start_ts)
-                        detail = "" if outbound_pdu is None else " (sent {ba})".format(ba=binascii.hexlify(outbound_pdu).decode())
-                        msg = "AsyncSerial.uart_read timeout. Elapsed {e} [us]{detail}".format(e=elapsed_us,detail=detail)   
-                        if nopost:
-                            print(msg)
-                        else:                     
-                            _logger.error(msg,nopost)
-                        nopost = True
-                    
+                        print("AsyncSerial.uart_read timeout. Elapsed {e} [us]".format(e=elapsed_us))
                     pass
 
         else:
@@ -189,7 +175,7 @@ class AsyncSerial:
                     # variable length function codes may require multiple reads
                     if self._exit_read(response):
                         if self._debug:
-                            _logger.debug("AsyncSerial.uart_read - exit read because response: {r}".format(r=binascii.hexlify(response).decode()))
+                            print("AsyncSerial.uart_read - exit read because response: {r}".format(r=binascii.hexlify(response)))
                         break
                 await asyncio.sleep_ms(50)
 
@@ -210,16 +196,24 @@ class AsyncSerial:
 
             if len(rec_bytes) > 0:
                 if self._debug:
-                    _logger.debug("UART {id} received {ba}".format(id=self._id, ba=binascii.hexlify(rec_bytes).decode()))
+                    print("UART {id} received {ba}".format(id=self._id, ba=binascii.hexlify(rec_bytes)))
                 return rec_bytes
 
         if self._debug:
-            _logger.debug("UART {id} received {ba}".format(id=self._id, ba=binascii.hexlify(rec_bytes).decode()))
+            print("UART {id} received {ba}".format(id=self._id, ba=binascii.hexlify(rec_bytes)))
 
         return rec_bytes
 
+
     #@asynctimeit
-    async def _send_raw(self, serial_pdu):
+    async def _send(self, modbus_pdu, slave_addr):
+        serial_pdu = bytearray()
+        serial_pdu.append(slave_addr)
+        serial_pdu.extend(modbus_pdu)
+
+        crc = self._calculate_crc16(serial_pdu)
+        serial_pdu.extend(crc)
+
         if self._ctrlPin:
             self._ctrlPin(1)
 
@@ -233,76 +227,40 @@ class AsyncSerial:
             self._ctrlPin(0)
 
         if self._debug:
-            _logger.debug("UART {id} sent {ba}".format(id=self._id, ba=binascii.hexlify(serial_pdu).decode()))
+            print("UART {id} sent {ba}".format(id=self._id, ba=binascii.hexlify(serial_pdu)))
 
-    #@asynctimeit
-    async def _send(self, modbus_pdu, slave_addr):
-        serial_pdu = bytearray()
-        serial_pdu.append(slave_addr)
-        serial_pdu.extend(modbus_pdu)
-
-        crc = self._calculate_crc16(serial_pdu)
-        serial_pdu.extend(crc)
-
-        await self._send_raw(serial_pdu)
-
-    def trace_response(self, slave_addr, response):
-        if self._debug:
-            if response and len(response)>0:
-                _logger.debug("UART {id} received '{ba}' from slave {slave_addr}".format(id=self._id, ba=binascii.hexlify(response).decode(), slave_addr=slave_addr))     
-            else:
-                 _logger.error("UART {id} response from slave {slave_addr} is empty".format(id=self._id, slave_addr=slave_addr)) 
     
-    async def _send_receive(self, modbus_pdu, slave_addr, count: bool):
+    async def _send_receive(self, modbus_pdu, slave_addr, count):
         # flush the Rx FIFO
         await self._uart_flush_rx_fifo()
         await self._send(modbus_pdu, slave_addr)
         response = await self._uart_read()
-        self.trace_response(slave_addr, response)
+        if self._debug:
+            if response and len(response)>0:
+                print("UART {id} received '{ba}'".format(id=self._id, ba=binascii.hexlify(response)))        
+            else:
+                print("UART {id} response is empty".format(id=self._id)) 
         return self._validate_resp_hdr(response, slave_addr, modbus_pdu[0], count)        
 
-
-    async def send_receive_raw(self, serial_pdu, count: bool):
-        
-        slave_addr = serial_pdu [0]
-        function_code = serial_pdu [1]
-        
-        # flush the Rx FIFO
-        await self._uart_flush_rx_fifo()
-        await self._send_raw(serial_pdu)
-        response = await self._uart_read(outbound_pdu=serial_pdu)
-        self.trace_response(slave_addr, response)
-        # Validate the header; if there are problems an exception will be raised
-        if response and len(response)>0:
-            validated_payload = self._validate_resp_hdr(response, slave_addr, function_code, count)
-        else:
-            _logger.error('UART {id}: Sent \'{out}\', {r}No data received from slave {slave_addr}{n}'.format(
-                id=self._id, out=binascii.hexlify(serial_pdu), slave_addr=slave_addr,r=colors.BOLD_RED,n=colors.NORMAL))
-            validated_payload = None
-        # Return the full pdu received
-        return response
-
-
-    def _validate_resp_hdr(self, response, slave_addr, function_code, count: bool):
+    def _validate_resp_hdr(self, response, slave_addr, function_code, count):
 
         if len(response) == 0:
-            raise OSError('no data received from slave {slave_addr}'.format(slave_addr=slave_addr))
+            raise OSError('no data received from slave')
 
         resp_crc = response[-Const.CRC_LENGTH:]
         expected_crc = self._calculate_crc16(response[0:len(response) - Const.CRC_LENGTH])
         if (resp_crc[0] != expected_crc[0]) or (resp_crc[1] != expected_crc[1]):
-            raise OSError('invalid response CRC from slave {slave_addr}'.format(slave_addr=slave_addr))
+            raise OSError('invalid response CRC')
 
         if (response[0] != slave_addr):
-            raise ValueError('wrong slave address, {a1} != {a2}'.format(a1=slave_addr, a2=response[0]))
+            raise ValueError('wrong slave address')
 
         if (response[1] == (function_code + Const.ERROR_BIAS)):
-            raise ValueError('slave {slave_addr} returned exception code: {c:d}'.format(slave_addr=slave_addr, c=response[2]))
+            raise ValueError('slave returned exception code: {:d}'.format(response[2]))
 
         hdr_length = (Const.RESPONSE_HDR_LENGTH + 1) if count else Const.RESPONSE_HDR_LENGTH
-        result = response[hdr_length : len(response) - Const.CRC_LENGTH]
-        
-        return result
+
+        return response[hdr_length : len(response) - Const.CRC_LENGTH]
 
     async def read_coils(self, slave_addr, starting_addr, coil_qty):
         modbus_pdu = functions.read_coils(starting_addr, coil_qty)
