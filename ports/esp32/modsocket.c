@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "py/gc.h"
 #include "py/runtime0.h"
 #include "py/nlr.h"
 #include "py/objlist.h"
@@ -81,6 +82,8 @@ typedef struct _socket_obj_t {
     struct _socket_obj_t *events_next;
     #endif
 } socket_obj_t;
+
+STATIC const char *TAG = "modsocket";
 
 void _socket_settimeout(socket_obj_t *sock, uint64_t timeout_ms);
 
@@ -153,64 +156,67 @@ static inline void check_for_exceptions(void) {
     mp_handle_pending(true);
 }
 
-// This function mimics lwip_getaddrinfo, with added support for mDNS queries
-static int _socket_getaddrinfo3(const char *nodename, const char *servname,
+#if MICROPY_HW_ENABLE_MDNS_QUERIES
+// This function mimics lwip_getaddrinfo, but makes an mDNS query
+STATIC int mdns_getaddrinfo(const char *host_str, const char *port_str,
     const struct addrinfo *hints, struct addrinfo **res) {
-
-    #if MICROPY_HW_ENABLE_MDNS_QUERIES
-    int nodename_len = strlen(nodename);
+    int host_len = strlen(host_str);
     const int local_len = sizeof(MDNS_LOCAL_SUFFIX) - 1;
-    if (nodename_len > local_len
-        && strcasecmp(nodename + nodename_len - local_len, MDNS_LOCAL_SUFFIX) == 0) {
-        // mDNS query
-        char nodename_no_local[nodename_len - local_len + 1];
-        memcpy(nodename_no_local, nodename, nodename_len - local_len);
-        nodename_no_local[nodename_len - local_len] = '\0';
-
-        esp_ip4_addr_t addr = {0};
-
-        esp_err_t err = mdns_query_a(nodename_no_local, MDNS_QUERY_TIMEOUT_MS, &addr);
-        if (err != ESP_OK) {
-            if (err == ESP_ERR_NOT_FOUND) {
-                *res = NULL;
-                return 0;
-            }
-            *res = NULL;
-            return err;
-        }
-
-        struct addrinfo *ai = memp_malloc(MEMP_NETDB);
-        if (ai == NULL) {
-            *res = NULL;
-            return EAI_MEMORY;
-        }
-        memset(ai, 0, sizeof(struct addrinfo) + sizeof(struct sockaddr_storage));
-
-        struct sockaddr_in *sa = (struct sockaddr_in *)((uint8_t *)ai + sizeof(struct addrinfo));
-        inet_addr_from_ip4addr(&sa->sin_addr, &addr);
-        sa->sin_family = AF_INET;
-        sa->sin_len = sizeof(struct sockaddr_in);
-        sa->sin_port = lwip_htons((u16_t)atoi(servname));
-        ai->ai_family = AF_INET;
-        ai->ai_canonname = ((char *)sa + sizeof(struct sockaddr_storage));
-        memcpy(ai->ai_canonname, nodename, nodename_len + 1);
-        ai->ai_addrlen = sizeof(struct sockaddr_storage);
-        ai->ai_addr = (struct sockaddr *)sa;
-
-        *res = ai;
+    if (host_len <= local_len ||
+        strcasecmp(host_str + host_len - local_len, MDNS_LOCAL_SUFFIX) != 0) {
         return 0;
     }
-    #endif
 
-    // Normal query
-    return lwip_getaddrinfo(nodename, servname, hints, res);
+    // mDNS query
+    char host_no_local[host_len - local_len + 1];
+    memcpy(host_no_local, host_str, host_len - local_len);
+    host_no_local[host_len - local_len] = '\0';
+
+    esp_ip4_addr_t addr = {0};
+
+    esp_err_t err = mdns_query_a(host_no_local, MDNS_QUERY_TIMEOUT_MS, &addr);
+    if (err != ESP_OK) {
+        if (err == ESP_ERR_NOT_FOUND) {
+            *res = NULL;
+            return 0;
+        }
+        *res = NULL;
+        return err;
+    }
+
+    struct addrinfo *ai = memp_malloc(MEMP_NETDB);
+    if (ai == NULL) {
+        *res = NULL;
+        return EAI_MEMORY;
+    }
+    memset(ai, 0, sizeof(struct addrinfo) + sizeof(struct sockaddr_storage));
+
+    struct sockaddr_in *sa = (struct sockaddr_in *)((uint8_t *)ai + sizeof(struct addrinfo));
+    inet_addr_from_ip4addr(&sa->sin_addr, &addr);
+    sa->sin_family = AF_INET;
+    sa->sin_len = sizeof(struct sockaddr_in);
+    sa->sin_port = lwip_htons((u16_t)atoi(port_str));
+    ai->ai_family = AF_INET;
+    ai->ai_canonname = ((char *)sa + sizeof(struct sockaddr_storage));
+    memcpy(ai->ai_canonname, host_str, host_len + 1);
+    ai->ai_addrlen = sizeof(struct sockaddr_storage);
+    ai->ai_addr = (struct sockaddr *)sa;
+    ai->ai_socktype = SOCK_STREAM;
+    if (hints) {
+        ai->ai_socktype = hints->ai_socktype;
+        ai->ai_protocol = hints->ai_protocol;
+    }
+
+    *res = ai;
+    return 0;
 }
+#endif // MICROPY_HW_ENABLE_MDNS_QUERIES
 
-static int _socket_getaddrinfo2(const mp_obj_t host, const mp_obj_t portx, struct addrinfo **resp) {
-    const struct addrinfo hints = {
-        .ai_family = AF_INET,
-        .ai_socktype = SOCK_STREAM,
-    };
+static void _getaddrinfo_inner(const mp_obj_t host, const mp_obj_t portx,
+    const struct addrinfo *hints, struct addrinfo **res) {
+    int retval = 0;
+
+    *res = NULL;
 
     mp_obj_t port = portx;
     if (mp_obj_is_integer(port)) {
@@ -228,27 +234,37 @@ static int _socket_getaddrinfo2(const mp_obj_t host, const mp_obj_t portx, struc
     }
 
     MP_THREAD_GIL_EXIT();
-    int res = _socket_getaddrinfo3(host_str, port_str, &hints, resp);
+
+    #if MICROPY_HW_ENABLE_MDNS_QUERIES
+    retval = mdns_getaddrinfo(host_str, port_str, hints, res);
+    #endif
+
+    if (retval == 0 && *res == NULL) {
+        // Normal query
+        retval = lwip_getaddrinfo(host_str, port_str, hints, res);
+    }
+
     MP_THREAD_GIL_ENTER();
 
     // Per docs: instead of raising gaierror getaddrinfo raises negative error number
-    if (res != 0) {
-        mp_raise_OSError(res > 0 ? -res : res);
+    if (retval != 0) {
+        mp_raise_OSError(retval > 0 ? -retval : retval);
     }
     // Somehow LwIP returns a resolution of 0.0.0.0 for failed lookups, traced it as far back
     // as netconn_gethostbyname_addrtype returning OK instead of error.
-    if (*resp == NULL ||
-        (strcmp(resp[0]->ai_canonname, "0.0.0.0") == 0 && strcmp(host_str, "0.0.0.0") != 0)) {
+    if (*res == NULL ||
+        (strcmp(res[0]->ai_canonname, "0.0.0.0") == 0 && strcmp(host_str, "0.0.0.0") != 0)) {
+        lwip_freeaddrinfo(*res);
         mp_raise_OSError(-2); // name or service not known
     }
 
-    return res;
+    assert(retval == 0 && *res != NULL);
 }
 
 STATIC void _socket_getaddrinfo(const mp_obj_t addrtuple, struct addrinfo **resp) {
     mp_obj_t *elem;
     mp_obj_get_array_fixed_n(addrtuple, 2, &elem);
-    _socket_getaddrinfo2(elem[0], elem[1], resp);
+    _getaddrinfo_inner(elem[0], elem[1], NULL, resp);
 }
 
 STATIC mp_obj_t socket_make_new(const mp_obj_type_t *type_in, size_t n_args, size_t n_kw, const mp_obj_t *args) {
@@ -272,6 +288,13 @@ STATIC mp_obj_t socket_make_new(const mp_obj_type_t *type_in, size_t n_args, siz
     sock->state = sock->type == SOCK_STREAM ? SOCKET_STATE_NEW : SOCKET_STATE_CONNECTED;
 
     sock->fd = lwip_socket(sock->domain, sock->type, sock->proto);
+    if (sock->fd < 0 && errno == ENFILE) {
+        // ESP32 LWIP has a hard socket limit, ENFILE is returned when this is
+        // reached. Similar to the logic elsewhere for MemoryError, try running
+        // GC before failing outright.
+        gc_collect();
+        sock->fd = lwip_socket(sock->domain, sock->type, sock->proto);
+    }
     if (sock->fd < 0) {
         mp_raise_OSError(errno);
     }
@@ -364,16 +387,96 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(socket_accept_obj, socket_accept);
 STATIC mp_obj_t socket_connect(const mp_obj_t arg0, const mp_obj_t arg1) {
     socket_obj_t *self = MP_OBJ_TO_PTR(arg0);
     struct addrinfo *res;
+    bool blocking = false;
+    int flags;
+    int raise_err = 0;
+
     _socket_getaddrinfo(arg1, &res);
     MP_THREAD_GIL_EXIT();
     self->state = SOCKET_STATE_CONNECTED;
-    int r = lwip_connect(self->fd, res->ai_addr, res->ai_addrlen);
-    MP_THREAD_GIL_ENTER();
-    lwip_freeaddrinfo(res);
-    if (r != 0) {
-        mp_raise_OSError(errno);
+
+    flags = fcntl(self->fd, F_GETFL);
+
+    blocking = (flags & O_NONBLOCK) == 0;
+
+    if (blocking) {
+        // For blocking sockets, make the socket temporarily non-blocking and emulate
+        // blocking using select.
+        //
+        // This has two benefits:
+        //
+        // - Allows handling external exceptions while waiting for connect.
+        //
+        // - Allows emulating a connect timeout, which is not supported by LWIP or
+        //   required by POSIX but is normal behaviour for CPython.
+        if (fcntl(self->fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+            ESP_LOGE(TAG, "fcntl set failed %d", errno); // Unexpected internal failure
+            raise_err = errno;
+        }
     }
 
+    if (raise_err == 0) {
+        // Try performing the actual connect. Expected to always return immediately.
+        int r = lwip_connect(self->fd, res->ai_addr, res->ai_addrlen);
+        if (r != 0) {
+            raise_err = errno;
+        }
+    }
+
+    if (blocking) {
+        // Set the socket back to blocking. We can still pass it to select() in this state.
+        int r = fcntl(self->fd, F_SETFL, flags);
+        if (r != 0 && (raise_err == 0 || raise_err == EINPROGRESS)) {
+            ESP_LOGE(TAG, "fcntl restore failed %d", errno); // Unexpected internal failure
+            raise_err = errno;
+        }
+    }
+
+    lwip_freeaddrinfo(res);
+
+    if (blocking && raise_err == EINPROGRESS) {
+        // Keep calling select() until the socket is marked writable (i.e. connected),
+        // or an error or a timeout occurs
+
+        // Note: _socket_settimeout() always sets self->retries != 0 on blocking sockets.
+
+        for (unsigned int i = 0; i <= self->retries; i++) {
+            struct timeval timeout = {
+                .tv_sec = 0,
+                .tv_usec = SOCKET_POLL_US,
+            };
+            fd_set wfds;
+            FD_ZERO(&wfds);
+            FD_SET(self->fd, &wfds);
+
+            int r = select(self->fd + 1, NULL, &wfds, NULL, &timeout);
+            if (r < 0) {
+                // Error condition
+                raise_err = errno;
+                break;
+            } else if (r > 0) {
+                // Select indicated the socket is writable. Check for any error.
+                socklen_t socklen = sizeof(raise_err);
+                r = getsockopt(self->fd, SOL_SOCKET, SO_ERROR, &raise_err, &socklen);
+                if (r < 0) {
+                    raise_err = errno;
+                }
+                break;
+            } else {
+                // Select timed out
+                raise_err = ETIMEDOUT;
+
+                MP_THREAD_GIL_ENTER();
+                check_for_exceptions();
+                MP_THREAD_GIL_EXIT();
+            }
+        }
+    }
+
+    MP_THREAD_GIL_ENTER();
+    if (raise_err) {
+        mp_raise_OSError(raise_err);
+    }
     return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(socket_connect_obj, socket_connect);
@@ -807,10 +910,32 @@ STATIC MP_DEFINE_CONST_OBJ_TYPE(
     );
 
 STATIC mp_obj_t esp_socket_getaddrinfo(size_t n_args, const mp_obj_t *args) {
-    // TODO support additional args beyond the first two
-
+    struct addrinfo hints = { };
     struct addrinfo *res = NULL;
-    _socket_getaddrinfo2(args[0], args[1], &res);
+
+    // Optional args: family=0, type=0, proto=0, flags=0, where 0 is "least narrow"
+    if (n_args > 2) {
+        hints.ai_family = mp_obj_get_int(args[2]);
+    }
+    if (n_args > 3) {
+        hints.ai_socktype = mp_obj_get_int(args[3]);
+    }
+    if (hints.ai_socktype == 0) {
+        // This is slightly different to CPython with POSIX getaddrinfo. In
+        // CPython, calling socket.getaddrinfo() with socktype=0 returns any/all
+        // supported SocketKind values. Here, lwip_getaddrinfo() will echo
+        // whatever socktype was supplied to the caller. Rather than returning 0
+        // (invalid in a result), make it SOCK_STREAM.
+        hints.ai_socktype = SOCK_STREAM;
+    }
+    if (n_args > 4) {
+        hints.ai_protocol = mp_obj_get_int(args[4]);
+    }
+    if (n_args > 5) {
+        hints.ai_flags = mp_obj_get_int(args[5]);
+    }
+
+    _getaddrinfo_inner(args[0], args[1], &hints, &res);
     mp_obj_t ret_list = mp_obj_new_list(0, NULL);
 
     for (struct addrinfo *resi = res; resi; resi = resi->ai_next) {
@@ -837,9 +962,7 @@ STATIC mp_obj_t esp_socket_getaddrinfo(size_t n_args, const mp_obj_t *args) {
         mp_obj_list_append(ret_list, mp_obj_new_tuple(5, addrinfo_objs));
     }
 
-    if (res) {
-        lwip_freeaddrinfo(res);
-    }
+    lwip_freeaddrinfo(res);
     return ret_list;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(esp_socket_getaddrinfo_obj, 2, 6, esp_socket_getaddrinfo);
@@ -847,7 +970,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(esp_socket_getaddrinfo_obj, 2, 6, esp
 STATIC mp_obj_t esp_socket_initialize() {
     static int initialized = 0;
     if (!initialized) {
-        ESP_LOGI("modsocket", "Initializing");
+        ESP_LOGI(TAG, "Initializing");
         esp_netif_init();
         initialized = 1;
     }

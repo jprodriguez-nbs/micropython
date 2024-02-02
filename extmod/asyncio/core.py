@@ -219,6 +219,11 @@ def run_until_complete(main_task=None):
             elif t.state is None:
                 # Task is already finished and nothing await'ed on the task,
                 # so call the exception handler.
+
+                # Save exception raised by the coro for later use.
+                t.data = exc
+
+                # Create exception context and call the exception handler.
                 _exc_context["exception"] = exc
                 _exc_context["future"] = t
                 Loop.call_exception_handler(_exc_context)
@@ -272,9 +277,9 @@ class Loop:
         return Loop._exc_handler
 
     def default_exception_handler(loop, context):
-        print(context["message"])
-        print("future:", context["future"], "coro=", context["future"].coro)
-        sys.print_exception(context["exception"])
+        print(context["message"], file=sys.stderr)
+        print("future:", context["future"], "coro=", context["future"].coro, file=sys.stderr)
+        sys.print_exception(context["exception"], sys.stderr)
 
     def call_exception_handler(context):
         (Loop._exc_handler or Loop.default_exception_handler)(Loop, context)

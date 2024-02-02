@@ -38,6 +38,7 @@
 #include "py/stackctrl.h"
 #include "py/gc.h"
 #include "py/compile.h"
+#include "extmod/modmachine.h"
 #include "shared/runtime/pyexec.h"
 #include "readline.h"
 #include "gccollect.h"
@@ -106,7 +107,7 @@ void do_str(const char *src, mp_parse_input_kind_t input_kind) {
 extern uint32_t _heap_start;
 extern uint32_t _heap_end;
 
-int main(int argc, char **argv) {
+void NORETURN _start(void) {
     // Hook for a board to run code at start up, for example check if a
     // bootloader should be entered instead of the main application.
     MICROPY_BOARD_STARTUP();
@@ -136,7 +137,7 @@ soft_reset:
     mp_init();
     readline_init0();
 
-    #if MICROPY_PY_MACHINE_HW_SPI
+    #if MICROPY_PY_MACHINE_SPI
     spi_init0();
     #endif
 
@@ -170,7 +171,7 @@ soft_reset:
             MP_OBJ_NEW_SMALL_INT(0),
             MP_OBJ_NEW_SMALL_INT(115200),
         };
-        MP_STATE_PORT(board_stdio_uart) = MP_OBJ_TYPE_GET_SLOT(&machine_uart_type, make_new)((mp_obj_t)&machine_uart_type, MP_ARRAY_SIZE(args), 0, args);
+        MP_STATE_VM(dupterm_objs[0]) = MP_OBJ_TYPE_GET_SLOT(&machine_uart_type, make_new)((mp_obj_t)&machine_uart_type, MP_ARRAY_SIZE(args), 0, args);
     }
     #endif
 
@@ -190,6 +191,9 @@ soft_reset:
 
     if (ret != 0) {
         printf("MPY: can't mount flash\n");
+    } else {
+        mp_obj_list_append(mp_sys_path, MP_OBJ_NEW_QSTR(MP_QSTR__slash_flash));
+        mp_obj_list_append(mp_sys_path, MP_OBJ_NEW_QSTR(MP_QSTR__slash_flash_slash_lib));
     }
     #endif
 
@@ -295,8 +299,6 @@ soft_reset:
     #endif
 
     goto soft_reset;
-
-    return 0;
 }
 
 #if !MICROPY_VFS
@@ -364,8 +366,4 @@ void nlr_jump_fail(void *val) {
 void MP_WEAK __assert_func(const char *file, int line, const char *func, const char *expr) {
     printf("Assertion '%s' failed, at file %s:%d\n", expr, file, line);
     __fatal_error("Assertion failed");
-}
-
-void _start(void) {
-    main(0, NULL);
 }
