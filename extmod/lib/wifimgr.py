@@ -23,14 +23,31 @@ ap_password = "urbidermis"
 ap_authmode = 3  # WPA2
 
 
-wlan_ap = network.WLAN(network.AP_IF)
-wlan_sta = network.WLAN(network.STA_IF)
+#wlan_ap = network.WLAN(network.AP_IF)
+#wlan_sta = network.WLAN(network.STA_IF)
+
+_wlan_ap = None
+_wlan_sta = None
 
 server_socket = None
 connection_parameters = None
 
 _logger = None
 _display_text=[]
+
+
+def wlan_ap():
+    global _wlan_ap
+    if _wlan_ap is None:
+        _wlan_ap = network.WLAN(network.AP_IF)
+    return _wlan_ap
+
+def wlan_sta():
+    global _wlan_sta
+    if _wlan_sta is None:
+        _wlan_sta = network.WLAN(network.AP_IF)
+    return _wlan_sta
+
 
 def logger():
     global _logger
@@ -68,12 +85,12 @@ def add_text(display_obj, t):
 
 async def activate_wifi(display_obj = None):
     # Search WiFis in range
-    if not wlan_sta.isconnected():
+    if not wlan_sta().isconnected():
         logger().debug("Activate WLAN STA and SCAN ...")
-        wlan_sta.active(False)
+        wlan_sta().active(False)
         await asyncio.sleep_ms(250)
         add_text(display_obj, "Activate WLAN STA")
-        wlan_sta.active(True)
+        wlan_sta().active(True)
         await asyncio.sleep_ms(250)
 
 
@@ -83,14 +100,14 @@ async def get_connection(display_obj = None, start_web = False):
     global _display_text
 
     # First check if there already is any connection:
-    if wlan_sta.isconnected():
+    if wlan_sta().isconnected():
         return wlan_sta
 
     connected = False
     try:
         # ESP connecting to WiFi takes time, wait a bit and try again:
         await asyncio.sleep(3)
-        if wlan_sta.isconnected():
+        if wlan_sta().isconnected():
             return wlan_sta
 
         logger().debug("Read WLAN profiles ...")
@@ -107,7 +124,7 @@ async def get_connection(display_obj = None, start_web = False):
             pass
 
         add_text(display_obj, "Scan WiFi")
-        networks = wlan_sta.scan()
+        networks = wlan_sta().scan()
         
         if networks is not None and len(networks)>0:
             logger().debug("List found networks ...")
@@ -210,8 +227,8 @@ def update_wifi_cfg(ap_cfg, wifi_dat):
 
 
 async def do_connect(display_obj, ssid, password):
-    wlan_sta.active(True)
-    connected = wlan_sta.isconnected()
+    wlan_sta().active(True)
+    connected = wlan_sta().isconnected()
     if connected:
         return connected
 
@@ -219,9 +236,9 @@ async def do_connect(display_obj, ssid, password):
     if ssid in profiles:
         logger().info('Trying to connect to {ssid}...'.format(ssid=ssid))
         add_text(display_obj, "Try {ssid}".format(ssid=ssid))
-        wlan_sta.connect(ssid, password)
+        wlan_sta().connect(ssid, password)
         for retry in range(100):
-            connected = wlan_sta.isconnected()
+            connected = wlan_sta().isconnected()
             if connected:
                 break
             #time.sleep(0.1)
@@ -229,7 +246,7 @@ async def do_connect(display_obj, ssid, password):
             #print('.', end='')
         if connected:
             add_text(display_obj, "OK {ssid}".format(ssid=ssid))
-            logger().info('\nConnected. Network config: {c}'.format(c=wlan_sta.ifconfig()))
+            logger().info('\nConnected. Network config: {c}'.format(c=wlan_sta().ifconfig()))
         else:
             add_text(display_obj, "FAILED {ssid}".format(ssid=ssid))
             logger().info('\nFailed. Not Connected to: {ssid}'.format(ssid=ssid))
@@ -252,13 +269,13 @@ def send_response(client, payload, status_code=200):
     client.close()
 
 def get_ssids():
-    wlan_sta.active(True)
-    ssids = sorted(ssid.decode('utf-8') for ssid, *_ in wlan_sta.scan())
+    wlan_sta().active(True)
+    ssids = sorted(ssid.decode('utf-8') for ssid, *_ in wlan_sta().scan())
     return ssids
 
 def handle_root(client):
-    wlan_sta.active(True)
-    ssids = sorted(ssid.decode('utf-8') for ssid, *_ in wlan_sta.scan())
+    wlan_sta().active(True)
+    ssids = sorted(ssid.decode('utf-8') for ssid, *_ in wlan_sta().scan())
     send_header(client)
     client.sendall("""\
         <html>
@@ -384,8 +401,8 @@ def stop():
 
 def activate_ap(port = 80):
     addr = socket.getaddrinfo('0.0.0.0', port)[0][-1]
-    wlan_ap.active(True)
-    wlan_ap.config(essid=ap_ssid, password=ap_password, authmode=ap_authmode)
+    wlan_ap().active(True)
+    wlan_ap().config(essid=ap_ssid, password=ap_password, authmode=ap_authmode)
 
     print('Connect to WiFi ssid ' + ap_ssid + ', default password: ' + ap_password)
     print('and access the ESP via your favorite web browser at 192.168.4.1.')
@@ -398,7 +415,7 @@ async def start(port=80):
 
     stop()
 
-    wlan_sta.active(True)
+    wlan_sta().active(True)
     activate_ap()
 
     server_socket = socket.socket()
@@ -411,7 +428,7 @@ async def start(port=80):
         wdt = WDT(timeout=10000)
 
     while True:
-        if wlan_sta.isconnected():
+        if wlan_sta().isconnected():
             return True
 
         ts_now = utime.time()

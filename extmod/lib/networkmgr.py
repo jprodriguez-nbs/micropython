@@ -15,15 +15,18 @@ import ubinascii
 import ntptime
 import utime
 import network
-import uping
 import gc
 import arequests
-
-
-from modem import Modem
-import wifimgr  as wifimgr
+import time
 
 import umdc_pinout as PINOUT
+
+if PINOUT.PING_ENABLED:
+    import uping
+
+
+#import wifimgr  as wifimgr
+
 import umdc_config as CFG
 
 
@@ -97,7 +100,11 @@ class NetworkMgr(object):
     _wifi_error = False
     _ppp_error = False
 
-
+    @classmethod
+    def get_wifimgr():
+        import wifimgr  as wifimgr
+        gc.collect()
+        return wifimgr
 
 
     @classmethod
@@ -106,7 +113,7 @@ class NetworkMgr(object):
 
     @classmethod
     def activate_ap(cls):
-        wifimgr.activate_ap()
+        cls.get_wifimgr().activate_ap()
 
     @classmethod
     def stop(cls):
@@ -290,10 +297,12 @@ class NetworkMgr(object):
                 server_hostname = PINOUT.PING_TARGET
                 if server_hostname is not None and len(server_hostname):
                     try:
-                        ping_target = server_hostname
-                        #cls._logger.debug("Ping server: {hostname}".format(hostname=ping_target))
-                        print("Ping server: {hostname}".format(hostname=ping_target))
-                        uping.ping(ping_target)
+                        for i in range(PINOUT.NB_PING_LOOPS):
+                            tools.free()
+                            ping_target = server_hostname
+                            #cls._logger.debug("Ping server: {hostname}".format(hostname=ping_target))
+                            print("networkmgr - ping server: {hostname}".format(hostname=ping_target))
+                            uping.ping(ping_target)
                     except Exception as ex:
                         cls._logger.error("get_info_page.ping({h}) error: {e}".format(h=ping_target, e=str(ex)))
                         
@@ -390,13 +399,13 @@ class NetworkMgr(object):
                 cls._wdt.feed()
 
             cls._logger.debug("connect wlan ...")
-            cls._wlan = await wifimgr.get_connection()
+            cls._wlan = await cls.get_wifimgr().get_connection()
             _ip = None
             if cls._wlan is not None:
                 cls._wificonnected = cls._wlan.isconnected()
                 _ip = cls._wlan.ifconfig()
             
-                connection_parameters = wifimgr.get_connection_parameters()
+                connection_parameters = cls.get_wifimgr().get_connection_parameters()
                 cls._wifi_connection_parameters = connection_parameters
                 if connection_parameters is not None:
                     cls._logger.info("Interface's MAC: {mac}".format(mac=ubinascii.hexlify(network.WLAN().config('mac'),':').decode())) # print the interface's MAC
@@ -410,17 +419,64 @@ class NetworkMgr(object):
 
 
     @classmethod
+    def attachGSMtoPPP(cls, _uart):
+        
+        
+        is_connected = False
+        while is_connected is False:
+            print("Create network.PPP")
+            GPRS=network.PPP(_uart)
+            time.sleep(1)
+            print("Activate network.PPP")
+            GPRS.active(True)
+            time.sleep(1)
+            print("Connect network.PPP with '{u}', '{p}'".format(u=PINOUT.PPP_USER, p=PINOUT.PPP_PSW))
+            GPRS.connect(authmode=GPRS.AUTH_CHAP, username=PINOUT.PPP_USER, password=PINOUT.PPP_PSW)
+            time.sleep(3)
+            print("Check if network.PPP is connected")
+            
+            idx = 0
+            last_msg = None
+            while is_connected is False and idx < 100:            
+                idx = idx + 1
+                is_connected = GPRS.isconnected()
+                _ip = GPRS.ifconfig()
+                msg = "PPP connected {c}, IP {ip}".format(c=is_connected, ip=_ip)
+                if msg != last_msg:
+                    print(msg)
+                    last_msg = msg
+                else:
+                    time.sleep(0.5)
+
+            if is_connected is False:
+                GPRS.active(False)
+                time.sleep(1)
+                del GPRS
+                GPRS = None
+
+        return GPRS
+
+    @classmethod
     async def gprs_connect(cls):
         try:
             if cls._modem is None:
+                from modem import Modem
                 cls._modem = Modem(None)
 
             # Connect the modem
             cls._logger.debug('{c}Modem connect ...{n}'.format(c=colors.BOLD_GREEN,n=colors.NORMAL))
-            (iccid, imei, rssi, revision, _ppp) = cls._modem.connect(apn=cls._apn, user=cls._ppp_user, pwd=cls._ppp_password)
-            if _ppp is not None:
+            (iccid, imei, rssi, revision, _uart) = cls._modem.connect(apn=cls._apn, user=cls._ppp_user, pwd=cls._ppp_password)
+            if _uart is not None:
+                del cls._modem
+                del Modem
+                cls._modem = None
+                tools.free()
+                _ppp = cls.attachGSMtoPPP(_uart)
+                
                 a = _ppp.ifconfig()
                 cls._logger.info('{c}Modem IP address:{n} "{a}"'.format(a=str(a),c=colors.BOLD_GREEN,n=colors.NORMAL))
+                # Free resources
+
 
             #v = await cls._modem.get_fwversion()
             #cls._logger.info('{c}FW Version:{n} "{v}"'.format(v=str(v),c=colors.BOLD_GREEN,n=colors.NORMAL))
@@ -471,8 +527,9 @@ class NetworkMgr(object):
     @classmethod
     async def ppp_connect(cls):
         try:
+            import modem
             if cls._modem is None:
-                cls._modem = Modem(None)
+                cls._modem = modem.Modem(None)
 
             if cls._ppp is None or cls._ppp.isconnected() is False:
                 # PPP communication
@@ -483,8 +540,13 @@ class NetworkMgr(object):
                     del cls._ppp
                     cls._ppp = None
                 
-                (cls._iccid, cls._imei, cls._rssi, cls._revision, cls._ppp) = cls._modem.connect(apn=cls._apn, user=cls._ppp_user, pwd=cls._ppp_password)
-                if cls._ppp is not None:
+                (cls._iccid, cls._imei, cls._rssi, cls._revision, _uart) = cls._modem.connect(apn=cls._apn, user=cls._ppp_user, pwd=cls._ppp_password)
+                if _uart is not None:
+                    del cls._modem
+                    
+                    cls._modem = None
+                    tools.free()
+                    cls._ppp =  cls.attachGSMtoPPP(_uart)
                     cls._pppconnected = cls._ppp.isconnected()
                     if cls._pppconnected:
                         cls._ppp_connection_parameters = cls._ppp.ifconfig()
@@ -503,7 +565,7 @@ class NetworkMgr(object):
                         CFG.set_config(cls.__config)
                         
                 await cls.get_info_page()
-
+            del modem
 
         except Exception as ex:
             cls._logger.exc(ex,"PPP: {e}".format(e=str(ex)))

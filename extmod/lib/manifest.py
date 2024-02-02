@@ -33,7 +33,15 @@ freeze(
         "tools.py",
         "ubutton.py",
         "uping.py",
-        "wifimgr.py"
+        "wifimgr.py",
+        
+        "umdc/__init__.py",
+        "umdc/comm.py",
+        "umdc/core.py",
+        "umdc/mb_task.py",
+        "umdc/mqtt_task.py",
+        "umdc/status.py",
+        "umdc/mdc_mqtt.py",
     ),
     opt=3,
 )

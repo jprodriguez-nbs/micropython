@@ -15,6 +15,7 @@ import umdc_pinout as PINOUT
 from constants import *
 import colors
 
+
 def get_parts(data):
     parts = None
     try:
@@ -40,7 +41,7 @@ def get_parts(data):
 
 
 def check_mpy():
-    sys_mpy = sys.implementation.mpy
+    sys_mpy = sys.implementation._mpy
     arch = [None, 'x86', 'x64',
         'armv6', 'armv6m', 'armv7m', 'armv7em', 'armv7emsp', 'armv7emdp',
         'xtensa', 'xtensawin'][sys_mpy >> 10]
@@ -190,19 +191,7 @@ def remove_messages_files(bRemove=True):
 
 
 
-def set_version(v):
-    version_fn = "app/version.dat"
-    with open(version_fn, 'w') as versionfile:
-        versionfile.write(v)
-        versionfile.close()
 
-def get_version():
-    version_fn = "app/version.dat"
-    if 'version.dat' in os.listdir('app'):
-        with open(version_fn) as f:
-            version = f.read()
-            return version
-    return '0.0.0'
 
 def ensure_data_files():
     remove_messages_files(False)
@@ -231,16 +220,6 @@ def remove_file(filename):
     if file_exists(filename):
         os.remove(filename)
 
-def set_check_update():
-    fn = "check_update.dat"
-    if file_exists(fn) is False:
-        with open(fn, 'w') as f:
-            import utime
-            ts_now = utime.time()
-            f.write(str(ts_now))
-            
-def needs_to_check_update():
-    return file_exists(FN_CHECK_UPDATE)
 
 def do_reboot():
     # Soft reset using deepsleep to really release memory
@@ -266,3 +245,33 @@ def ping_payload(di_slave_ok):
         li_ping_payload.append(s)
     ping_payload = "{{{content}}}".format(content=';'.join(li_ping_payload))
     return ping_payload    
+
+
+def set_version(v):
+    version_fn = "app/version.dat"
+    with open(version_fn, 'w') as versionfile:
+        versionfile.write(v)
+        versionfile.close()
+
+def get_version():
+    version_fn = "app/version.dat"
+    if 'version.dat' in os.listdir('app'):
+        with open(version_fn) as f:
+            version = f.read()
+            return version
+    return '0.0.0'
+
+def set_check_update():
+    fn = "check_update.dat"
+    if file_exists(fn) is False:
+        with open(fn, 'w') as f:
+            import utime
+            ts_now = utime.time()
+            f.write(str(ts_now))
+            
+def needs_to_check_update():
+    return file_exists(FN_CHECK_UPDATE)
+
+def get_fw_version():
+    t = os.uname()
+    return t.version

@@ -11,7 +11,7 @@ import binascii
 from micropython import const
 
 import umdc_pinout as PINOUT
-import wifimgr as wifimgr
+#import wifimgr as wifimgr
 import tools
 
 from constants import *
@@ -167,7 +167,9 @@ def update_wifi_config(c):
         wifi_dat = c[K_WIFI]
     else:
         wifi_dat = None
-    wifimgr.update_wifi_cfg(ap_cfg,wifi_dat)
+    if PINOUT.WIFI_ENABLED:
+        import wifimgr as wifimgr
+        wifimgr.update_wifi_cfg(ap_cfg,wifi_dat)
 
 def set_config(c):
     global _config

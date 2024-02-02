@@ -18,8 +18,14 @@
 #define MICROPY_PY_DEFLATE_COMPRESS (1)
 
 
-#define MBEDTLS_SSL_PROTO_TLS1 (1)
-#define MBEDTLS_SSL_PROTO_TLS1_1 (1)
-#define MBEDTLS_SSL_PROTO_TLS1_2 (1)
+#define MBEDTLS_SSL_PROTO_TLS1 (0)
+#define MBEDTLS_SSL_PROTO_TLS1_1 (0)
+#define MBEDTLS_SSL_PROTO_TLS1_2 (0)
 
 #define MICROPY_GC_MULTIHEAP (1)
+
+
+//#define MICROPY_PY_UCRYPTOLIB           (0)
+
+//#define MICROPY_GC_SPLIT_HEAP               (1)
+//#define MICROPY_GC_SPLIT_HEAP_AUTO          (0)

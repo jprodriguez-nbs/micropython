@@ -6,9 +6,9 @@ from machine import UART, Pin
 import socket
 import utime
 
-APN = "clnxpt.vf.global"
-PPP_USER = "Portugal"
-PPP_PSW = "1234RTU"
+APN = PINOUT.APN
+PPP_USER = PINOUT.PPP_USER
+PPP_PSW = PINOUT.PPP_PSW
 
 
 def get_uart():

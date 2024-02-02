@@ -9,7 +9,7 @@ import sys
 import network
 import re
 from hwversion import WDT_ENABLED
-
+import tools
 
 _wdt = None
 WDT_ENABLED = True
@@ -385,7 +385,10 @@ class Modem():
     def get_group(self, m, g):
         r = None
         if m:
-            r = m.group(g)
+            try:
+                r = m.group(g)
+            except:
+                pass
         return r
     
     def connect(self, apn="clnxpt.vf.global", user="Portugal", pwd="1234RTU"):
@@ -403,33 +406,33 @@ class Modem():
                              
         self.commands(li_commands)
         
+        time.sleep(8)
+        
         (csq_result, csq_status_m) = self.command('AT+CSQ', 5, 'CSQ:\s*(\d+),(\d+)')
         (rssi, ber) = self.calc_rssi(csq_status_m)
         print ('CSQ -> {r} {s} dBm'.format(r=csq_result, s=rssi))
         
-        self.commands(['AT+CNCFG?', 'AT+GMM', 'AT+CCID', 'AT+COPS?', 'AT+CSQ', 'AT+CREG?', 'AT+CGREG?', 'AT+CFUN?','AT+CPIN?', 'AT+COPS?', 'AT+CSQ', 'AT+CREG?', 'AT+CGREG?','AT+CNACT?'])
+        cereg_result = False
+        cgreg_result = False
+        cereg_status_m = None
+        cgreg_status_m = None
+        (cereg_result, cereg_status_m) = self.command('AT+CEREG?', 2, 'CEREG: (0,[15])')
         
+        for idx in range(50):
+            if PINOUT.WAIT_FOR_CREG:
+                if not cereg_result:
+                    (cereg_result, cereg_status_m) = self.command('AT+CEREG?', 2, 'CEREG: (0,[15])')
+            if not cgreg_result:
+                (cgreg_result, cgreg_status_m) = self.command('AT+CGREG?', 2, 'CGREG: (0,[15])')
+            if (PINOUT.WAIT_FOR_CREG is False or cereg_result) and cgreg_result:
+                break
+        
+        (addr_result, addr_status_m) = self.command('AT+CGPADDR=1', 5, 'CGPADDR:\s*(\w+),(\w+)?')
         (cpin_result, cpin_status_m) = self.command('AT+CPIN?', 5, 'CPIN:\s*(\w+)')
         (iccid_result, iccid_status_m) = self.command('AT+CCID', 5, '(CCID\s*)?(\d+)')
         (imei_result, imei_status_m) = self.command('AT+GSN', 5, '(GSN\s*)?(\d+)')
         (gmr_result, gmr_status_m) = self.command('AT+GMR', 5, 'Revision:(\w+)')
-
-        
-        creg_result = False
-        cgreg_result = False
-        creg_status_m = None
-        cgreg_status_m = None
-        (creg_result, creg_status_m) = self.command('AT+CREG?', 2, 'CREG: (0,[15])')
-        
-        for idx in range(50):
-            if PINOUT.WAIT_FOR_CREG:
-                if not creg_result:
-                    (creg_result, creg_status_m) = self.command('AT+CREG?', 2, 'CREG: (0,[15])')
-            if not cgreg_result:
-                (cgreg_result, cgreg_status_m) = self.command('AT+CGREG?', 2, 'CGREG: (0,[15])')
-            if (PINOUT.WAIT_FOR_CREG is False or creg_result) and cgreg_result:
-                break
-            
+        (cpsi_result, cpsi_status_m) = self.command('AT+CPSI?', 5, 'CPSI:\s*([\s\w,-\.]+)')
         (csq_result, csq_status_m) = self.command('AT+CSQ', 5, 'CSQ:\s*(\d+),(\d+)')
         
         cpin_status = self.get_group(cpin_status_m,1)
@@ -437,9 +440,11 @@ class Modem():
         (rssi, ber) = self.calc_rssi(csq_status_m)
         iccid = self.get_group(iccid_status_m,2)
         imei = self.get_group(imei_status_m,2)
+        addr = self.get_group(addr_status_m,2)
+        cpsi = self.get_group(cpsi_status_m,1)
         
-        if creg_status_m is not None:
-            creg = self.get_group(creg_status_m,0)
+        if cereg_status_m is not None:
+            creg = self.get_group(cereg_status_m,0)
         else:
             creg = None
             
@@ -453,12 +458,29 @@ class Modem():
         print ('CSQ -> {r} {s} dBm'.format(r=csq_result, s=rssi))
         print ('CCID (ICCID) -> {r} {s}'.format(r=iccid_result, s=iccid))
         print ('GSN (IMEI) -> {r} {s}'.format(r=imei_result, s=imei))
-        print ('CREG -> {r} {s}'.format(r=creg_result, s=creg))
+        print ('ADDR -> {r} {s}'.format(r=addr_result, s=addr))
+        print ('CPSI -> {r} {s}'.format(r=cpsi_result, s=cpsi))
+        print ('CEREG -> {r} {s}'.format(r=cereg_result, s=creg))
         print ('CGREG -> {r} {s}'.format(r=cgreg_result, s=cgreg))
         
-        self.commands(['AT+CNACT?','ATD*99#'])
-        ppp = self.attachGSMtoPPP()
-        return (iccid, imei, rssi, revision, ppp)
+        self.commands(['AT+CGACT?'])
+        
+        (connect_result, connect_status_m) = self.command('ATD*99#', 10, 'CONNECT\s?(\d*)?')
+        if connect_status_m is not None:
+            connect_speeed = self.get_group(connect_status_m,1)
+        else:
+            connect_speeed = None
+        print ('ATD -> {r} {s}'.format(r=connect_result, s=connect_speeed))
+        
+                
+        self.empty_buffer()
+        
+        #tools.free()
+        #ppp = self.attachGSMtoPPP()
+        
+        tools.free()
+        
+        return (iccid, imei, rssi, revision, self.gsm)
 
     def disconnect(self):
         press_modem_powerkey()

@@ -13,7 +13,7 @@ gc.collect()
 from ubinascii import hexlify
 import uasyncio as asyncio
 from uasyncio import core
-import ussl
+#import ussl
 
 gc.collect()
 import utime
@@ -305,6 +305,7 @@ class MQTT_base:
         #yield asyncio.sleep_ms(_DEFAULT_MS)
                 
         if self._ssl:
+            import ussl
             gc.collect()
             esp32.idf_heap_info(esp32.HEAP_DATA)
             self.dprint("Wrap raw socket in SSL socket")
@@ -344,7 +345,7 @@ class MQTT_base:
                     self.dprint("mqtt_as._connect({addr}) exception {e}".format(addr=self._addr, e=str(e)))
                     raise
                 
-            await asyncio.sleep_ms(1000) # Allow enough time to finish connection
+            await asyncio.sleep_ms(2000) # Allow enough time to finish connection
             self.dprint("Socket connected. Connecting to broker @ {addr}, SSL {ssl}.".format(addr=self._addr,ssl=self._ssl))
             if self._ssl:
                 import ussl
