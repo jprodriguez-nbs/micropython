@@ -6,10 +6,10 @@ import arequests
 
 import uasyncio as asyncio
 
-print("Import planter pinout")
-import planter_pinout as PINOUT
-print("Import planter config")
-import planter.config as CFG
+print("Import umdc pinout")
+import umdc_pinout as PINOUT
+print("Import umdc config")
+import umdc_config as CFG
 
 print ("Import logging")
 import logging as logging
@@ -19,8 +19,8 @@ _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.DEBUG)
 
 
-_get_headers = {"Connection": "close"}
-_post_headers = {
+GET_HEADERS = {"Connection": "close"}
+POST_HEADERS = {
     'content-type': 'application/json',
     "Connection": "close"
     }
@@ -36,7 +36,7 @@ class PlanterModem(object):
     def __init__(self):
 
         print("Import SIM800L")
-        from frozen.SIM800L import Modem
+        from SIM800L import Modem
 
         print('Create Modem object...')
 
@@ -74,10 +74,6 @@ class PlanterModem(object):
         self._modem.connect(apn=PINOUT.APN)
         print('\nModem IP address: "{}"'.format(self._modem.get_ip_addr()))
 
-        # APN: movistar.es
-        # CONFIG_MODEM_PPP_AUTH_USERNAME="movistar"
-        # CONFIG_MODEM_PPP_AUTH_PASSWORD="movistar"
-
 
         # Example GET
         print('\nNow running demo http GET...')
@@ -104,16 +100,22 @@ class PlanterModemAsync(object):
 
     def __init__(self):
         print("Import async_SIM800L")
-        from frozen.async_SIM800L import AsyncModem
+        from async_SIM800L import AsyncModem
+        
+        #print("Import async_SIM7070G")
+        #from async_SIM7070G import AsyncModem
 
         print('Create AsyncModem object...')
 
         # Create new modem object on the right Pins
-        self._modem = AsyncModem(modem_pwkey_pin    = PINOUT.MODEM_PWKEY_PIN,
-                    modem_rst_pin      = PINOUT.MODEM_RST_PIN,
-                    modem_power_on_pin = PINOUT.MODEM_POWER_ON_PIN,
-                    modem_tx_pin       = PINOUT.MODEM_TX_PIN,
-                    modem_rx_pin       = PINOUT.MODEM_RX_PIN)
+        self._modem = AsyncModem(uart_port = PINOUT.MODEM_UART_PORT,
+                                modem_pwkey_pin    = PINOUT.MODEM_PWKEY_PIN,
+                                modem_rst_pin      = PINOUT.MODEM_RST_PIN,
+                                modem_power_on_pin = PINOUT.MODEM_POWER_ON_PIN,
+                                modem_tx_pin       = PINOUT.MODEM_TX_PIN,
+                                modem_rx_pin       = PINOUT.MODEM_RX_PIN,
+                                pwrkey_inverted = PINOUT.PWKEY_INVERTED,
+                                baudrate = PINOUT.MODEM_BAUDRATE)
 
         print('Modem created')
 
@@ -141,9 +143,6 @@ class PlanterModemAsync(object):
             a = await self._modem.get_ip_addr()
             print('\n{c}Modem IP address:{n} "{a}"'.format(a=str(a),c=colors.BOLD_GREEN,n=colors.NORMAL))
 
-            # APN: movistar.es
-            # CONFIG_MODEM_PPP_AUTH_USERNAME="movistar"
-            # CONFIG_MODEM_PPP_AUTH_PASSWORD="movistar"
 
             v = await self._modem.get_fwversion()
             print('\n{c}FW Version:{n} "{v}"'.format(v=str(v),c=colors.BOLD_GREEN,n=colors.NORMAL))
@@ -189,13 +188,14 @@ class PlanterModemAsync(object):
 
             print('\n{c}Connect PPP ({apn}, {u}, {p}) ...{n}'.format(c=colors.BOLD_GREEN,n=colors.NORMAL,apn=_apn, u=_ppp_user, p=_ppp_password))
 
-            ppp = await self._modem.ppp_connect(apn=_apn, user=_ppp_user, pwd=_ppp_password)
+            (iccid, rssi, ppp) = await self._modem.ppp_connect(apn=_apn, user=_ppp_user, pwd=_ppp_password)
+            print ("SIM ICCID = {iccid}".format(iccid=iccid))
 
             try:
                 # Execute request
                 url = 'http://checkip.dyn.com/'
                 print("{c}Get - URL:{n} {url}".format(url=url, c=colors.BOLD_GREEN,n=colors.NORMAL))
-                response = await arequests.get(url, headers=_get_headers)
+                response = await arequests.get(url, headers=GET_HEADERS)
                 print("{c}Response{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
             except Exception as ex:
                 _logger.exc(ex,"PPP: {e}".format(e=str(ex)))
@@ -204,7 +204,7 @@ class PlanterModemAsync(object):
                 # Execute request
                 url = 'http://www.google.es/'
                 print("{c}Get - URL:{n} {url}".format(url=url, c=colors.BOLD_GREEN,n=colors.NORMAL))
-                response = await arequests.get(url, headers=_get_headers)
+                response = await arequests.get(url, headers=GET_HEADERS)
                 print("{c}Response{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
             except Exception as ex:
                 _logger.exc(ex,"PPP: {e}".format(e=str(ex)))
@@ -213,7 +213,7 @@ class PlanterModemAsync(object):
                 # Execute request
                 url = 'https://campus.uoc.edu/'
                 print("{c}Get - URL:{n} {url}".format(url=url, c=colors.BOLD_GREEN,n=colors.NORMAL))
-                response = await arequests.get(url, headers=_get_headers)
+                response = await arequests.get(url, headers=GET_HEADERS)
                 print("{c}Response{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
             except Exception as ex:
                 _logger.exc(ex,"PPP: {e}".format(e=str(ex)))

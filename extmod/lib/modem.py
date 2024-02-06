@@ -11,6 +11,12 @@ import re
 from hwversion import WDT_ENABLED
 import tools
 
+if PINOUT.IMPORT_FROM_APP:
+    import frozen.umdc_config as CFG
+else:
+    import umdc_config as CFG
+
+
 _wdt = None
 WDT_ENABLED = True
 if WDT_ENABLED:
@@ -18,6 +24,18 @@ if WDT_ENABLED:
 
 DEBUG = True
 DETAILED_DEBUG = False
+
+try:    
+    __config = CFG.config()
+    _apn = __config[CFG.K_GPRS][CFG.K_APN]
+    _ppp_user = __config[CFG.K_GPRS][CFG.K_USER]
+    _ppp_password = __config[CFG.K_GPRS][CFG.K_PSW]
+except Exception as ex:
+    print("Failed to get PPP configuration from config: {e}".format(e=str(ex)))
+    _apn = PINOUT.APN
+    _ppp_user = PINOUT.PPP_USER
+    _ppp_password = PINOUT.PPP_PSW
+
 
 def press_modem_powerkey(on_pulse_duration_ms=1200):
 
@@ -323,6 +341,8 @@ class Modem():
         
         self.empty_buffer()
         
+
+        
         is_connected = False
         while is_connected is False:
             print("Create network.PPP")
@@ -331,8 +351,8 @@ class Modem():
             print("Activate network.PPP")
             GPRS.active(True)
             time.sleep(1)
-            print("Connect network.PPP with '{u}', '{p}'".format(u=PINOUT.PPP_USER, p=PINOUT.PPP_PSW))
-            GPRS.connect(authmode=GPRS.AUTH_CHAP, username=PINOUT.PPP_USER, password=PINOUT.PPP_PSW)
+            print("Connect network.PPP with '{u}', '{p}'".format(u=_ppp_user, p=_ppp_password))
+            GPRS.connect(authmode=GPRS.AUTH_CHAP, username=_ppp_user, password=_ppp_password)
             time.sleep(3)
             print("Check if network.PPP is connected")
             
@@ -402,6 +422,8 @@ class Modem():
         if sync is False:
             machine.reset()
               
+        PINOUT.ExecuteModemInitialCommands(self, __config)
+              
         li_commands = PINOUT.GetPPPCommands(apn, user, pwd)
                              
         self.commands(li_commands)
@@ -464,6 +486,9 @@ class Modem():
         print ('CGREG -> {r} {s}'.format(r=cgreg_result, s=cgreg))
         
         self.commands(['AT+CGACT?'])
+        
+        
+        PINOUT.ExecuteModemLastCommandsBeforePPP(self, __config)
         
         (connect_result, connect_status_m) = self.command('ATD*99#', 10, 'CONNECT\s?(\d*)?')
         if connect_status_m is not None:

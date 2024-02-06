@@ -4,7 +4,7 @@ import json
 import uasyncio as asyncio
 
 from uModBus.async_serial import AsyncSerial
-import planter_pinout as PINOUT
+import umdc_pinout as PINOUT
 
 import logging
 import gc
