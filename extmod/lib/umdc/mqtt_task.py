@@ -28,7 +28,7 @@ gc.collect()
 print("Load mqtt_as")
 from mqtt_as_timeout import MQTTClient
 from mqtt_as import config
-#import ussl as ssl
+#import ssl as ssl
 print("mqtt_as loaded")
 gc.collect()
 

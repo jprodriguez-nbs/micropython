@@ -16,7 +16,6 @@
 # a timely fashion.
 
 from mqtt_as import MQTTClient as _MQTTClient
-from mqtt_as import config as config
 import time
 import uasyncio as asyncio
 

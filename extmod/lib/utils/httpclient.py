@@ -102,7 +102,7 @@ class HttpClient:
         if proto == 'http:':
             port = 80
         elif proto == 'https:':
-            import ussl
+            import ssl
             port = 443
         else:
             raise ValueError('Unsupported protocol: ' + proto)
@@ -120,7 +120,7 @@ class HttpClient:
         try:
             s.connect(ai[-1])
             if proto == 'https:':
-                s = ussl.wrap_socket(s, server_hostname=host)
+                s = ssl.wrap_socket(s, server_hostname=host)
             s.write(b'%s /%s HTTP/1.0\r\n' % (method.encode(), path.encode()))
             if not 'Host' in headers:
                 s.write(b'Host: %s\r\n' % host.encode())

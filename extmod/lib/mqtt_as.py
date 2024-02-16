@@ -13,7 +13,7 @@ gc.collect()
 from ubinascii import hexlify
 import uasyncio as asyncio
 from uasyncio import core
-#import ussl
+#import ssl
 
 gc.collect()
 import utime
@@ -30,7 +30,7 @@ from sys import platform
 import esp32
 gc.collect()
 
-VERSION = (0, 7, 1)
+VERSION = (0, 7, 2)
 
 # Default short delay for good SynCom throughput (avoid sleep(0) with SynCom).
 _DEFAULT_MS = const(20)
@@ -53,8 +53,6 @@ PYBOARD = platform == "pyboard"
 # Default "do little" coro for optional user replacement
 async def eliza(*_):  # e.g. via set_wifi_handler(coro): see test program
     await asyncio.sleep_ms(_DEFAULT_MS)
-
-
 
 
 class MsgQueue:
@@ -153,11 +151,9 @@ class MQTT_base:
             self._lw_topic = False
         else:
             self._set_last_will(*will)
-        
         # WiFi config
         self._ssid = config["ssid"]  # Required for ESP32 / Pyboard D. Optional ESP8266
         self._wifi_pw = config["wifi_pw"]
-        
         self._ssl = config["ssl"]
         self._ssl_params = config["ssl_params"]
         # Callbacks and coros
@@ -177,12 +173,26 @@ class MQTT_base:
         if self.server is None:
             raise ValueError("no server specified.")
         self._sock = None
+        
         self.sock_connection_attempts = 0
         
         self._networkMgr = networkMgr
         
         self._stream_reader = None
         self._stream_writer = None
+        
+        if False:
+            self._sta_if = network.WLAN(network.STA_IF)
+            self._sta_if.active(True)
+            if config["gateway"]:  # Called from gateway (hence ESP32).
+                import aioespnow  # Set up ESPNOW
+
+                while not (sta := self._sta_if).active():
+                    time.sleep(0.1)
+                sta.config(pm=sta.PM_NONE)  # No power management
+                sta.active(True)
+                self._espnow = aioespnow.AIOESPNow()  # Returns AIOESPNow enhanced with async support
+                self._espnow.active(True)
 
         self.newpid = pid_gen()
         self.rcv_pids = set()  # PUBACK and SUBACK pids awaiting ACK response
@@ -305,11 +315,11 @@ class MQTT_base:
         #yield asyncio.sleep_ms(_DEFAULT_MS)
                 
         if self._ssl:
-            import ussl
+            import ssl
             gc.collect()
             esp32.idf_heap_info(esp32.HEAP_DATA)
             self.dprint("Wrap raw socket in SSL socket")
-            ssls = ussl.wrap_socket(s, server_hostname=host)  # Wrap raw socket in SSL socket
+            ssls = ssl.wrap_socket(s, server_hostname=host)  # Wrap raw socket in SSL socket
             gc.collect()
             self._sock = ssls
         else:
@@ -348,9 +358,9 @@ class MQTT_base:
             await asyncio.sleep_ms(2000) # Allow enough time to finish connection
             self.dprint("Socket connected. Connecting to broker @ {addr}, SSL {ssl}.".format(addr=self._addr,ssl=self._ssl))
             if self._ssl:
-                import ussl
+                import ssl
 
-                self._sock = ussl.wrap_socket(self._sock, **self._ssl_params)
+                self._sock = ssl.wrap_socket(self._sock, **self._ssl_params)
         else:
             await self.__open_connection(self.server, self.port)
             self.dprint("Socket connected. Connecting to broker @ {addr}, SSL {ssl}.".format(addr=self._addr,ssl=self._ssl))
@@ -391,8 +401,11 @@ class MQTT_base:
         resp = await self._as_read(4)
         self.dprint("Connected to broker.")  # Got CONNACK
         self.sock_connection_attempts = 0  # Reset counter
-        if resp[3] != 0 or resp[0] != 0x20 or resp[1] != 0x02:  # Bad CONNACK e.g. authentication fail.
-            raise OSError(-1, f"Connect fail: 0x{(resp[0] << 8) + resp[1]:04x} {resp[3]} (README 7)")
+        if resp[3] != 0 or resp[0] != 0x20 or resp[1] != 0x02:
+            # Bad CONNACK e.g. authentication fail.
+            raise OSError(
+                -1, f"Connect fail: 0x{(resp[0] << 8) + resp[1]:04x} {resp[3]} (README 7)"
+            )
 
     async def _ping(self):
         async with self.lock:
@@ -444,6 +457,7 @@ class MQTT_base:
             await self._kill_tasks(False)  # Keep socket open
             try:
                 async with self.lock:
+                    #self._sock.write(b"\xe0\0")  # Close broker connection
                     await self.__write(b"\xe0\0")  # Close broker connection
                     await asyncio.sleep_ms(100)
             except OSError:
@@ -457,11 +471,17 @@ class MQTT_base:
 
     def close(self):  # API. See https://github.com/peterhinch/micropython-mqtt/issues/60
         self._close()
-        try:
-            self._networkMgr.stop()  # Disconnect Wi-Fi to avoid errors
-        except OSError:
-            self.dprint("Wi-Fi not started, unable to disconnect interface")
-
+        if True:
+            try:
+                self._networkMgr.stop()  # Disconnect Wi-Fi to avoid errors
+            except OSError:
+                self.dprint("Wi-Fi not started, unable to disconnect interface")
+        else:
+            try:
+                self._sta_if.disconnect()  # Disconnect Wi-Fi to avoid errors
+            except OSError:
+                self.dprint("Wi-Fi not started, unable to disconnect interface")
+            self._sta_if.active(False)
 
     async def _await_pid(self, pid):
         t = ticks_ms()
@@ -643,11 +663,74 @@ class MQTTClient(MQTT_base):
         self._tasks = []
         if ESP8266:
             import esp
+
             esp.sleep_type(0)  # Improve connection integrity at cost of power consumption.
 
     async def wifi_connect(self, quick=False):
-        while self._networkMgr.isconnected() is False:
-            await asyncio.sleep_ms(500)
+        if True:
+            while self._networkMgr.isconnected() is False:
+                await asyncio.sleep_ms(500)
+        else:
+            s = self._sta_if
+            if ESP8266:
+                if s.isconnected():  # 1st attempt, already connected.
+                    return
+                s.active(True)
+                s.connect()  # ESP8266 remembers connection.
+                for _ in range(60):
+                    if (
+                        s.status() != network.STAT_CONNECTING
+                    ):  # Break out on fail or success. Check once per sec.
+                        break
+                    await asyncio.sleep(1)
+                if (
+                    s.status() == network.STAT_CONNECTING
+                ):  # might hang forever awaiting dhcp lease renewal or something else
+                    s.disconnect()
+                    await asyncio.sleep(1)
+                if not s.isconnected() and self._ssid is not None and self._wifi_pw is not None:
+                    s.connect(self._ssid, self._wifi_pw)
+                    while (
+                        s.status() == network.STAT_CONNECTING
+                    ):  # Break out on fail or success. Check once per sec.
+                        await asyncio.sleep(1)
+            else:
+                s.active(True)
+                if RP2:  # Disable auto-sleep.
+                    # https://datasheets.raspberrypi.com/picow/connecting-to-the-internet-with-pico-w.pdf
+                    # para 3.6.3
+                    s.config(pm=0xA11140)
+                s.connect(self._ssid, self._wifi_pw)
+                for _ in range(60):  # Break out on fail or success. Check once per sec.
+                    await asyncio.sleep(1)
+                    # Loop while connecting or no IP
+                    if s.isconnected():
+                        break
+                    if ESP32:
+                        # Status values >= STAT_IDLE can occur during connect:
+                        # STAT_IDLE 1000, STAT_CONNECTING 1001, STAT_GOT_IP 1010
+                        if s.status() < network.STAT_IDLE:  # Error statuses
+                            break  # are in range 200..204
+                    elif PYBOARD:  # No symbolic constants in network
+                        if not 1 <= s.status() <= 2:
+                            break
+                    elif RP2:  # 1 is STAT_CONNECTING. 2 reported by user (No IP?)
+                        if not 1 <= s.status() <= 2:
+                            break
+                else:  # Timeout: still in connecting state
+                    s.disconnect()
+                    await asyncio.sleep(1)
+
+            if not s.isconnected():  # Timed out
+                raise OSError("Wi-Fi connect timed out")
+            if not quick:  # Skip on first connection only if power saving
+                # Ensure connection stays up for a few secs.
+                self.dprint("Checking WiFi integrity.")
+                for _ in range(5):
+                    if not s.isconnected():
+                        raise OSError("Connection Unstable")  # in 1st 5 secs
+                    await asyncio.sleep(1)
+                self.dprint("Got reliable connection")
 
     async def connect(self, *, quick=False):  # Quick initial connect option for battery apps
         if not self._has_connected:
@@ -663,6 +746,7 @@ class MQTTClient(MQTT_base):
                 await self._connect(True)  # Connect with clean session
                 try:
                     async with self.lock:
+                        #self._sock.write(b"\xe0\0")  # Force disconnect but keep socket open
                         await self.__write(b"\xe0\0")  # Force disconnect but keep socket open
                 except OSError:
                     pass
@@ -746,6 +830,7 @@ class MQTTClient(MQTT_base):
     def isconnected(self):
         if self._in_connect:  # Disable low-level check during .connect()
             return True
+        #if self._isconnected and not self._sta_if.isconnected():  # It's going down.
         if self._isconnected and not self._networkMgr.isconnected():  # It's going down.
             self._reconnect()
         return self._isconnected
@@ -772,7 +857,12 @@ class MQTTClient(MQTT_base):
                 await asyncio.sleep(1)
                 gc.collect()
             else:  # Link is down, socket is closed, tasks are killed
-                
+                if False:
+                    try:
+                        self._sta_if.disconnect()
+                    except OSError:
+                        self.dprint("Wi-Fi not started, unable to disconnect interface")
+                    await asyncio.sleep(1)
                 try:
                     await self.wifi_connect()
                 except OSError:
