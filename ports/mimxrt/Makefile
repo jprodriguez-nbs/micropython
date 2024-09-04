@@ -132,7 +132,6 @@ SRC_HAL_IMX_C += \
 	$(MCU_DIR)/drivers/fsl_lpi2c.c \
 	$(MCU_DIR)/drivers/fsl_lpspi.c \
 	$(MCU_DIR)/drivers/fsl_lpspi_edma.c \
-	$(MCU_DIR)/drivers/fsl_lpuart.c \
 	$(MCU_DIR)/drivers/fsl_pit.c \
 	$(MCU_DIR)/drivers/fsl_pwm.c \
 	$(MCU_DIR)/drivers/fsl_sai.c \
@@ -172,7 +171,8 @@ SRC_HAL_IMX_C += \
 	$(MCU_DIR)/drivers/fsl_common_arm.c \
 	$(MCU_DIR)/drivers/fsl_anatop_ai.c \
 	$(MCU_DIR)/drivers/fsl_caam.c \
-	$(MCU_DIR)/drivers/fsl_lpadc.c
+	$(MCU_DIR)/drivers/fsl_lpadc.c \
+	$(MCU_DIR)/drivers/fsl_mu.c
 else
 SRC_HAL_IMX_C += \
 	$(MCU_DIR)/drivers/fsl_adc.c \
@@ -190,6 +190,7 @@ SRC_C += \
 	eth.c \
 	fatfs_port.c \
 	flash.c \
+	hal/fsl_lpuart.c \
 	hal/pwm_backport.c \
 	help.c \
 	led.c \
@@ -231,6 +232,8 @@ SHARED_SRC_C += \
 	shared/runtime/stdout_helpers.c \
 	shared/runtime/sys_stdio_mphal.c \
 	shared/timeutils/timeutils.c \
+	shared/tinyusb/mp_usbd.c \
+	shared/tinyusb/mp_usbd_cdc.c \
 
 # Set flash driver name, base address and internal flash flag, based on the flash type.
 ifeq ($(MICROPY_HW_FLASH_TYPE),$(filter $(MICROPY_HW_FLASH_TYPE),qspi_nor_flash))
@@ -265,6 +268,17 @@ endif # MICROPY_PY_BLUETOOTH
 
 ifeq ($(MICROPY_BLUETOOTH_NIMBLE),1)
 SRC_C += mpnimbleport.c
+endif
+
+# Add mimxrt-specific implementation of libmetal (and optionally OpenAMP's rproc).
+# Note: libmetal code is generated via a pre-processor so ensure that runs first.
+ifeq ($(MICROPY_PY_OPENAMP),1)
+SRC_C += mpmetalport.c
+$(BUILD)/mpmetalport.o: $(BUILD)/openamp/metal/config.h
+ifeq ($(MICROPY_PY_OPENAMP_REMOTEPROC),1)
+SRC_C += mpremoteprocport.c
+$(BUILD)/mpremoteprocport.o: $(BUILD)/openamp/metal/config.h
+endif
 endif
 
 # Math library source files
