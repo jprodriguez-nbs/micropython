@@ -1,7 +1,7 @@
 # main.py
 import time
 import json
-import uasyncio as asyncio
+import  asyncio
 
 from uModBus.async_serial import AsyncSerial
 import planter_pinout as PINOUT

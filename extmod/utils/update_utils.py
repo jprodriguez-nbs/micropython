@@ -4,7 +4,7 @@ import sys
 import gc
 #from frozen.networkmgr import NetworkMgr
 from networkmgr import NetworkMgr
-import uasyncio as asyncio
+import  asyncio
 
 
 _logger = ulogging.getLogger("UpdateUtils")

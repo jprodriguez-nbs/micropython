@@ -1,5 +1,6 @@
 #include("$(PORT_DIR)/boards/manifest.py")
 
+
 freeze("$(PORT_DIR)/modules")
 freeze("modules")
 
@@ -32,3 +33,9 @@ include("$(MPY_DIR)/extmod/lib/manifest.py")
 include("$(MPY_DIR)/extmod/primitives/manifest.py")
 #include("$(MPY_DIR)/extmod/planter/manifest.py")
 
+require("aioble-peripheral")
+require("aioble-server")
+require("aioble-central")
+require("aioble-client")
+require("aioble-l2cap")
+require("aioble-security")

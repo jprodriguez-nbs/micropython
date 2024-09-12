@@ -15,9 +15,7 @@ if WDT_ENABLED:
 
 DOWNLOAD_FROZEN_LIB = False
 
-
 _logger = logging.getLogger("OTAUpdater")
-_logger.setLevel(logging.DEBUG)
 
 class OTAUpdater:
     """
@@ -25,25 +23,16 @@ class OTAUpdater:
     optimized for low power usage.
     """
 
-    def __init__(self, update_host, is_gitlab, github_repo, github_src_dir='', module='', main_dir='main', new_version_dir='next', secrets_file=None, headers={}, extra_dirs=[]):
+    def __init__(self, github_repo, github_src_dir='', module='', main_dir='main', new_version_dir='next', secrets_file=None, headers={}, extra_dirs=[]):
         self.headers = headers
         self.http_client = HttpClient(headers=headers)
-        self.update_host = update_host
-        self.is_gitlab = is_gitlab
-        
-        r = github_repo.rstrip('/').replace(self.update_host, '')
-        r = r.replace("/","%2F")
-        r = r.replace(".","%2E")
-        self.github_repo = r
-        
-
+        self.github_repo = github_repo.rstrip('/').replace('https://github.com/', '')
         self.github_src_dir = '' if len(github_src_dir) < 1 else github_src_dir.rstrip('/') + '/'
         self.module = module.rstrip('/')
         self.main_dir = main_dir
         self.extra_dirs = extra_dirs
         self.new_version_dir = new_version_dir
         self.secrets_file = secrets_file
-        self.project_id = None
 
     def __del__(self):
         self.http_client = None
@@ -68,7 +57,7 @@ class OTAUpdater:
         lv_parts = latest_version.split(".")
         lv = lv_parts[0]*65535+lv_parts[1]*256+lv_parts[3]
         if lv > cv:
-            _logger.debug('New version available, will download and install on next reboot')
+            print('New version available, will download and install on next reboot')
             self._create_new_version_file(latest_version)
             return True
 
@@ -87,12 +76,12 @@ class OTAUpdater:
         if self.new_version_dir in os.listdir(self.module):
             if 'version.dat' in os.listdir(self.modulepath(self.new_version_dir)):
                 latest_version = self.get_version(self.modulepath(self.new_version_dir), 'version.dat')
-                _logger.info('New update found: ', latest_version)
+                print('New update found: ', latest_version)
                 OTAUpdater._using_network(ssid, password)
                 self.install_update_if_available()
                 return True
             
-        _logger.debug('No new updates found...')
+        print('No new updates found...')
         return False
 
     def install_update_if_available(self) -> bool:
@@ -109,7 +98,7 @@ class OTAUpdater:
 
         (current_version, latest_version) = self._check_for_new_version()
         if latest_version > current_version:
-            _logger.debug('Updating to version {}...'.format(latest_version))
+            print('Updating to version {}...'.format(latest_version))
             self._create_new_version_file(latest_version)
             self._download_new_version(latest_version, origin_dir=self.main_dir, target_dir=self.new_version_dir)
             for ed in self.extra_dirs:
@@ -134,24 +123,20 @@ class OTAUpdater:
         import network
         sta_if = network.WLAN(network.STA_IF)
         if not sta_if.isconnected():
-            _logger.debug('connecting to network...')
+            print('connecting to network...')
             sta_if.active(True)
             sta_if.connect(ssid, password)
             while not sta_if.isconnected():
                 pass
-        _logger.debug('network config:', sta_if.ifconfig())
+        print('network config:', sta_if.ifconfig())
 
     def _check_for_new_version(self):
         current_version = self.get_version(self.modulepath(self.main_dir))
-        
-        if self.is_gitlab:
-            project_id = self.get_project_id()
-        
         latest_version = self.get_latest_version()
 
-        _logger.debug('Checking version for project_id {id} ... '.format(id=project_id))
-        _logger.debug('\tCurrent version: {c}'.format(c=current_version))
-        _logger.debug('\tLatest version: {l}'.format(l=latest_version))
+        print('Checking version... ')
+        print('\tCurrent version: ', current_version)
+        print('\tLatest version: ', latest_version)
         return (current_version, latest_version)
 
     def get_current_version(self):
@@ -177,63 +162,21 @@ class OTAUpdater:
                 return version
         return '0.0.0'
 
-
-    def get_project_id(self):        
-        query_url = None
-        project_id = None
-        try:
-            query_url = "{s}api/v4/projects?path_with_namespace={r}".format(s=self.update_host,r=self.github_repo)
-            _logger.debug("Get project_id -> {url}".format(url=query_url))
-            
-            li_projects = self.http_client.get(query_url)
-            project_id = None
-            try:
-                obj = li_projects.json()
-                if len(obj)>0:
-                    obj0 = obj[0]
-                    if 'id' in obj0:
-                        project_id = obj0['id']
-                    else:
-                        msg = "get_project_id(url={u}, headers={h}) Error: id does not exist in {o}".format(u=query_url, h=self.headers, o = str(obj0))
-                        _logger.error(msg)
-            except Exception as ex:
-                msg = "get_project_id(url={u}, headers={h}) Exception {e}".format(u=query_url, h=self.headers, e = str(ex))
-                _logger.exc(ex, msg)
-            li_projects.close()
-        except Exception as ex:
-            msg = "get_project_id(url={u}, headers={h}) Exception {e}".format(u=query_url, h=self.headers, e = str(ex))
-            _logger.exc(ex, msg)
-        
-        _logger.info("{r} project id is {id}".format(r=self.github_repo, id=str(project_id)))
-        self.project_id = project_id
-        return project_id
-
     def get_latest_version(self):
-        if self.is_gitlab is False:
-            query_url = '-'.format(self.github_repo)
-        else:
-            
-            if self.project_id is None:
-                self.project_id = self.get_project_id()
-            
-            query_url = "{s}api/v4/projects/{id}/releases".format(s=self.update_host,id=self.project_id)
-        
-        _logger.debug("Get latest version -> {url}".format(url=query_url))
-        li_releases = self.http_client.get(query_url)
+        query_url = 'https://api.github.com/repos/{}/releases/latest'.format(self.github_repo)
+        latest_release = self.http_client.get(query_url)
         version = None
         try:
-            obj = li_releases.json()
-            if len(obj)>0:
-                obj0 = obj[0]
-                if 'tag_name' in obj0:
-                    version = obj0['tag_name']
-                else:
-                    msg = "get_latest_version(url={u}, headers={h}) Error: tag_name does not exist in {o}".format(u=query_url, h=self.headers, o = str(obj0))
-                    _logger.error(msg)
+            obj = latest_release.json()
+            if 'tag_name' in obj:
+                version = latest_release.json()['tag_name']
+            else:
+                msg = "get_latest_version(url={u}, headers={h}) Error: tag_name does not exist in {o}".format(u=query_url, h=self.headers, o = str(obj))
+                _logger.error(msg)
         except Exception as ex:
             msg = "get_latest_version(url={u}, headers={h}) Exception {e}".format(u=query_url, h=self.headers, e = str(ex))
             _logger.exc(ex, msg)
-        li_releases.close()
+        latest_release.close()
         return version
 
     def _download_new_version(self, version, origin_dir=None, target_dir=None):
@@ -241,83 +184,42 @@ class OTAUpdater:
             origin_dir = self.main_dir
         if target_dir is None:
             target_dir = self.new_version_dir
-        _logger.debug('Downloading version {v} {o} to {t}'.format(v=version, o=origin_dir, t=target_dir))
+        print('Downloading version {v} {o} to {t}'.format(v=version, o=origin_dir, t=target_dir))
         self._download_all_files(version, origin_dir=origin_dir, target_dir=target_dir)
-        d = d=self.modulepath(self.new_version_dir)
-        _logger.info('{o} version {v} downloaded to {d}'.format(o=origin_dir, v=version, d=d))
+        print('Version {} downloaded to {}'.format(version, self.modulepath(self.new_version_dir)))
 
     def _download_all_files(self, version, origin_dir=None, target_dir=None, sub_dir=''):
         if origin_dir is None:
             origin_dir = self.main_dir
         if target_dir is None:
             target_dir = self.new_version_dir
-        if self.is_gitlab is False:
-            url = 'https://api.github.com/repos/{}/contents{}{}{}?ref=refs/tags/{}'.format(
-                self.github_repo, 
-                self.github_src_dir, 
-                origin_dir, 
-                sub_dir, 
-                version)
-        else:
-            # URL Encode fn
-            fn = "{src}{o}{path}".format(src=self.github_src_dir,o=origin_dir, path=sub_dir)
-            fn = fn.replace("/","%2F")
-            fn = fn.replace(".","%2E")
-            url = '{}/api/v4/projects/{}/repository/tree?path={}&ref={}'.format(
-                self.update_host,
-                self.github_repo, 
-                fn, 
-                version)
-        
+        url = 'https://api.github.com/repos/{}/contents{}{}{}?ref=refs/tags/{}'.format(self.github_repo, self.github_src_dir, origin_dir, sub_dir, version)
         gc.collect() 
-        _logger.debug("_download_all_files({v}, {origin_dir}, {target_dir}, {sub_dir}) -> get {url}".format(
-            v=version, origin_dir=origin_dir, target_dir=target_dir, url=url, sub_dir=sub_dir))
         file_list = self.http_client.get(url)
-        file_list_json = file_list.json()
-        file_list.close()
-        gc.collect()
-        for file in file_list_json:
-            isFrozen = '/app/frozen/' in file['path'] or 'frozen/' in file['path']
+        for file in file_list.json():
+            isFrozen = '/app/frozen/' in file['path']
             if not isFrozen or DOWNLOAD_FROZEN_LIB:
                 path = self.modulepath(target_dir + '/' + file['path'].replace(origin_dir + '/', '').replace(self.github_src_dir, ''))
-                t = file['type']
-                n = file['name']
-                if t in ('file','blob'):
+                if file['type'] == 'file':
                     gitPath = file['path']
-                    _logger.info('\tDownloading: ', gitPath, 'to', path)
+                    print('\tDownloading: ', gitPath, 'to', path)
                     self._download_file(version, gitPath, path)
-                elif t in ('dir', 'tree'):
-                    _logger.debug('Creating dir', path)
+                elif file['type'] == 'dir':
+                    print('Creating dir', path)
                     self.mkdir(path)
-                    self._download_all_files(version, origin_dir, target_dir, sub_dir + '/' + n)
-                else:
-                    _logger.error("Unknown file {n} type {t}".format(n=n, t=t))
+                    self._download_all_files(version, origin_dir, target_dir, sub_dir + '/' + file['name'])
                 utime.sleep_ms(100)
                 gc.collect()
 
-        
+        file_list.close()
 
     def _download_file(self, version, gitPath, path):
         trial_count = 0
         downloaded = False
         while (downloaded is False) and (trial_count < 5):
             try:
-                if self.is_gitlab is False:
-                    url = 'https://raw.githubusercontent.com/{}/{}/{}'.format(self.github_repo, version, gitPath)
-                else:
-                    # URL Encode fn
-                    fn = gitPath.replace("/","%2F")
-                    fn = fn.replace(".","%2E")
-                    # Calculate url
-                    url = '{s}api/v4/projects/{id}/repository/files/{fn}/raw?ref={v}'.format(
-                        s=self.update_host,
-                        id=self.project_id, 
-                        fn=fn, 
-                        v=version)
-                _logger.debug("_download_file({v}, {gitPath}, {path}) -> get {url}".format(v=version, gitPath=gitPath, path=path, url=url))
-                self.http_client.get(url, saveToFile=path)
+                self.http_client.get('https://raw.githubusercontent.com/{}/{}/{}'.format(self.github_repo, version, gitPath), saveToFile=path)
                 downloaded = True
-                gc.collect()
                 if WDT_ENABLED:
                     _wdt.feed()
                 utime.sleep_ms(100)
@@ -330,17 +232,17 @@ class OTAUpdater:
         if self.secrets_file:
             fromPath = self.modulepath(self.main_dir + '/' + self.secrets_file)
             toPath = self.modulepath(self.new_version_dir + '/' + self.secrets_file)
-            _logger.debug('Copying secrets file from {} to {}'.format(fromPath, toPath))
+            print('Copying secrets file from {} to {}'.format(fromPath, toPath))
             self._copy_file(fromPath, toPath)
-            _logger.debug('Copied secrets file from {} to {}'.format(fromPath, toPath))
+            print('Copied secrets file from {} to {}'.format(fromPath, toPath))
 
     def _delete_old_version(self, dirname=None):
         if dirname is None:
             dirname = self.main_dir
         try:
-            _logger.debug('Deleting old version at {} ...'.format(self.modulepath(dirname)))
+            print('Deleting old version at {} ...'.format(self.modulepath(dirname)))
             self._rmtree(self.modulepath(dirname))
-            _logger.debug('Deleted old version at {} ...'.format(self.modulepath(dirname)))
+            print('Deleted old version at {} ...'.format(self.modulepath(dirname)))
         except Exception as ex:
             _logger.exc(ex, "Failed to delete old version at {} ...".format(self.modulepath(dirname)))
 
@@ -349,13 +251,13 @@ class OTAUpdater:
             nvd = self.new_version_dir
         if target is None:
             target = self.main_dir
-        _logger.debug('Installing new version at {} ...'.format(self.modulepath(target)))
+        print('Installing new version at {} ...'.format(self.modulepath(target)))
         if self._os_supports_rename():
             os.rename(self.modulepath(nvd), self.modulepath(target))
         else:
             self._copy_directory(self.modulepath(nvd), self.modulepath(target))
             self._rmtree(self.modulepath(nvd))
-        _logger.debug('Update installed, please reboot now')
+        print('Update installed, please reboot now')
 
     def _rmtree(self, directory):
         for entry in os.ilistdir(directory):
@@ -423,4 +325,3 @@ class OTAUpdater:
         return self.module + '/' + path if self.module else path
 
     
-

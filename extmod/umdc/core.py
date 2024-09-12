@@ -23,7 +23,7 @@ from machine import Pin, sleep, time_pulse_us, disable_irq, enable_irq, Timer, W
 from constants import *
 gc.collect()
 
-import uasyncio as asyncio
+import  asyncio
 gc.collect()
 
 import utime

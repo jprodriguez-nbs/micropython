@@ -1,56 +1,46 @@
 
-
-import gc
-import micropython
-import machine
-import tools
-print("UMDC Comm")
-tools.free(True)
-
-import umdc_pinout as PINOUT
-if PINOUT.IMPORT_FROM_APP:
-    from frozen.networkmgr import NetworkMgr
-else:
-    from networkmgr import NetworkMgr
-    
-import  asyncio
+from networkmgr import NetworkMgr
+import uasyncio as asyncio
 
 
 import ujson
 import arequests
-#import arequests as arequests
+#import app.frozen.arequests as arequests
+import gc
 import logging
+import planter_pinout as PINOUT
 import utime
+import machine
 import colors
+import planter.config as CFG
+import uping
+import json
 
-
-if PINOUT.IMPORT_FROM_APP:
-    import frozen.umdc_config as CFG
-else:
-    import umdc_config as CFG
-
-
-if PINOUT.PING_ENABLED:
-    import uping
-    
-try: 
-    from constants import *
-except:
-    from app.frozen.constants import *
-
+import power_monitor as power_monitor
 
 #from time_it import asynctimeit, timed_function
 
 
-_umdc = None
+_planter = None
 _ts_last_params = 0
 _ts_last_status_post = 0
 _ts_last_get_params_trial = 0
 
 
+_get_headers = {"Connection": "close"}
+_post_headers = {
+    'content-type': 'application/json',
+    "Connection": "close"
+    }
 
+"""
+_get_headers = {}
+_post_headers = {
+    'content-type': 'application/json'
+    }
+"""
 
-_logger = logging.getLogger("umdc.comm")
+_logger = logging.getLogger("planter.comm")
 _logger.setLevel(logging.DEBUG)
 _get_params_lock = asyncio.Lock()
 _post_lock = asyncio.Lock()
@@ -79,9 +69,8 @@ def trace_error(ex, msg):
     _logger.exc(ex, "{msg} (networkmgr {ns}, WiFi {w}, PPP {ppp}): {e}".format(msg=msg, e=str(ex), ns=ns, ppp=ppp, w=w), nopost=True)
 
 
-async def _ensure_connection(cls=None):
-    if not _enabled: 
-        return
+async def _ensure_connection(cls):
+    if not _enabled: return
     result = NetworkMgr.isconnected()
     return result
 
@@ -96,32 +85,43 @@ async def get_config(cls):
         url = cls.status.config_url
         
         _logger.debug("GetConfig - URL: {url}".format(url=url))
-        response = await arequests.get(url, headers=GET_HEADERS)
+        response = await arequests.get(url, headers=_get_headers)
         _logger.debug("{c}Config{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
         new_static_config = await response.json()
         cls.status.static_config = new_static_config["data"]
 
 
-async def get_test(cls=None):
+async def get_downlink_messages(cls):
     if not _enabled: 
         return
+    if cls.status.downlink_messages is not None and len(cls.status.downlink_messages)>0: 
+        # Already retrieved
+        return
 
-    try:
-        connected = await _ensure_connection(cls)
-    except Exception as ex:
-        print("Error: {e}".format(e=str(ex)))
-        connected = True
+    connected = await _ensure_connection(cls)
 
     if connected:
-        h = s=CFG.config()['mqtt_host']
-        url = 'http://{h}/test.html'.format(h=h)
+        cls.status.update_url()
+        url = cls.status.messages_url
         
-        _logger.debug("GetTest - URL: {url}".format(url=url))
+        _logger.debug("Get Downlink Messages - URL: {url}".format(url=url))
+        response = await arequests.get(url, headers=_get_headers)
+        li_messages = []
         try:
-            response = await arequests.get(url, headers=GET_HEADERS)
-            _logger.debug("{c}Response{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
+            #_logger.debug("{c}Downlink Messages{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
+            r = await response.json()
+            if r is not None:
+                li_messages = json.loads(r)
+                for msg in li_messages:
+                    _logger.debug("{c}Downlink message{n} {m}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, m=msg))
         except Exception as ex:
-            _logger.debug("GetTest - {c}Error{n}: {r}".format(c=colors.BOLD_RED,n=colors.NORMAL, r=str(ex)))
+            _logger.exc(ex, "{c}Downlink Messages{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
+        
+        
+        for m in li_messages:
+            if m not in cls.status.downlink_messages:
+                cls.status.downlink_messages.append(m)
+
 
 async def get_params(cls):
     if not _enabled: return
@@ -143,16 +143,15 @@ async def get_params(cls):
                 old_utc_shift_h = float(CFG.params()[CFG.K_ADVANCED][CFG.K_ADV_UTC_SHIFT])
                 url = cls.status.params_url
                 
-                if PINOUT.PING_ENABLED:
-                    server_hostname = cls.status.server_hostname
-                    if server_hostname is not None and len(server_hostname):
-                        _logger.debug("Ping server: {hostname}".format(hostname=server_hostname))
-                        uping.ping(server_hostname)
-                    else:
-                        _logger.error("Server hostname is null or empty")
+                server_hostname = cls.status.server_hostname
+                if server_hostname is not None and len(server_hostname):
+                    _logger.debug("Ping server: {hostname}".format(hostname=server_hostname))
+                    uping.ping(server_hostname)
+                else:
+                    _logger.error("Server hostname is null or empty")
                 
                 _logger.debug("GetParams - URL: {url}".format(url=url))
-                response = await arequests.get(url, headers=GET_HEADERS)
+                response = await arequests.get(url, headers=_get_headers)
                 _logger.debug("{c}Params{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
                 new_params = await response.json()
                 cls.status.params = new_params
@@ -187,7 +186,7 @@ async def _post_status(cls):
             if PINOUT.WDT_ENABLED:
                 cls.wdt.feed()
             #await asyncio.sleep_ms(100)
-            response = await arequests.post(url, headers=POST_HEADERS, data=_post_data)
+            response = await arequests.post(url, headers=_post_headers, data=_post_data)
             _logger.debug("{c}Post status answer{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
             if PINOUT.WDT_ENABLED:
                 cls.wdt.feed()
@@ -206,6 +205,129 @@ async def _post_status(cls):
         
 
 
+async def _post_irrigation(cls):
+    if not _enabled: return
+
+    global _post_data
+    try:
+        data = cls.status.irrigation_cycles()
+        nb_cycles = len(data)
+        if nb_cycles> 0:
+            connected = await _ensure_connection(cls)
+
+            if connected:
+                url = cls.status.irrigation_url
+                li_cycles = []
+                for c in data:
+                    try:
+                        li_cycles.append(c.to_dict())
+                    except Exception as ex:
+                        _logger.exc(ex, "PostIrrigation error: {e} - Data: {d}".format(e=str(ex), d=str(c)))
+                _post_data = ujson.dumps(li_cycles).encode('UTF8')
+                l = len(_post_data)
+                _logger.debug("\n{c}PostIrrigation{n} - URL: {url} - Data: {l} bytes\n{post_data}\n".format(c=colors.BOLD_GREEN,n=colors.NORMAL, url=url, l=l, post_data = _post_data))
+                if PINOUT.WDT_ENABLED:
+                    cls.wdt.feed()
+                response = await arequests.post(url, headers=_post_headers, data=_post_data)
+                _logger.debug("{c}PostIrrigation answer{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
+                if PINOUT.WDT_ENABLED:
+                    cls.wdt.feed()
+                response_obj = await response.json()
+                result_ok = (("result" in response_obj) and (response_obj["result"] is True)) or \
+                            (("status" in response_obj) and (response_obj["status"] == "Accepted"))
+
+                if result_ok:
+                    # The irrigation cycles have been received by the agent, therefore we can clear the list
+                    cls.status.clear_irrigation_cycles(True)
+        if PINOUT.WDT_ENABLED:
+            cls.wdt.feed()
+        gc.collect()
+    except Exception as ex:
+        trace_error(ex, "PostIrrigation error")
+        
+
+
+async def _post_rain(cls):
+    if not _enabled: return
+
+    global _post_data
+    try:
+        data = cls.status.rain_measures()
+        nb_cycles = len(data)
+        if nb_cycles> 0:
+            connected = await _ensure_connection(cls)
+
+            if connected:
+                url = cls.status.rain_url
+                li_measures = []
+                for c in data:
+                    try:
+                        li_measures.append(c.to_dict())
+                    except Exception as ex:
+                        _logger.exc(ex, "Post rain error: {e} - Data: {d}".format(e=str(ex), d=str(c)))
+                _post_data = ujson.dumps(li_measures).encode('UTF8')
+                l = len(_post_data)
+                _logger.debug("\n{c}PostRain{n} - URL: {url} - Data: {l} bytes\n{post_data}\n".format(c=colors.BOLD_GREEN,n=colors.NORMAL, url=url, l=l, post_data = _post_data))
+                if PINOUT.WDT_ENABLED:
+                    cls.wdt.feed()
+                response = await arequests.post(url, headers=_post_headers, data=_post_data)
+                t= await response.text()
+                _logger.debug("{c}Post rain answer{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= t))
+                if PINOUT.WDT_ENABLED:
+                    cls.wdt.feed()
+
+                result_ok = False
+                if (response is not None) and len(t)>0 :
+                    try:
+                        response_obj = await response.json()
+                        result_ok = (("result" in response_obj) and (response_obj["result"] is True)) or \
+                                    (("status" in response_obj) and (response_obj["status"] == "Accepted"))
+                    except:
+                        result_ok = False
+
+                if result_ok:
+                    # The rain measures have been received by the agent, therefore we can clear the list
+                    cls.status.clear_rain_measures(True)
+        if PINOUT.WDT_ENABLED:
+            cls.wdt.feed()
+        gc.collect()
+    except Exception as ex:
+        trace_error(ex, "Post rain error")
+
+
+async def _post_power(cls):
+    if not _enabled: return
+
+    global _post_data
+    try:
+        has_pm_measures = power_monitor.has_measures()
+        if has_pm_measures:
+            data = cls.status.power_measures
+            if data is not None:
+                connected = await _ensure_connection(cls)
+
+                if connected:
+                    url = cls.status.power_url
+                    pm_data = data.to_dict()
+                    _post_data = ujson.dumps(pm_data).encode('UTF8')
+                    l = len(_post_data)
+                    _logger.debug("\n{c}PostPower{n} - URL: {url} - Data: {l} bytes\n{post_data}\n".format(c=colors.BOLD_GREEN,n=colors.NORMAL, url=url, l=l, post_data = _post_data))
+                    if PINOUT.WDT_ENABLED:
+                        cls.wdt.feed()
+                    response = await arequests.post(url, headers=_post_headers, data=_post_data)
+                    _logger.debug("{c}Post power answer{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
+                    if PINOUT.WDT_ENABLED:
+                        cls.wdt.feed()
+                    response_obj = await response.json()
+                    if (("result" in response_obj) and (response_obj["result"] is True)) or \
+                    (("status" in response_obj) and (response_obj["status"] == "Accepted")):
+                        # The power measures have been received by the agent, therefore we can clear the list
+                        cls.status.clear_power_measures()
+        if PINOUT.WDT_ENABLED:
+            cls.wdt.feed()
+        gc.collect()
+    except Exception as ex:
+        trace_error(ex, "Post power error")
 
 
 async def _post_traces(cls):
@@ -226,7 +348,7 @@ async def _post_traces(cls):
                 if PINOUT.WDT_ENABLED:
                     cls.wdt.feed()
                 #await asyncio.sleep_ms(100)
-                response = await arequests.post(url, headers=POST_HEADERS, data=_post_data)
+                response = await arequests.post(url, headers=_post_headers, data=_post_data)
                 _logger.debug("{c}Post traces answer{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
                 if PINOUT.WDT_ENABLED:
                     cls.wdt.feed()
@@ -259,7 +381,7 @@ async def _post_events(cls):
             if PINOUT.WDT_ENABLED:
                 cls.wdt.feed()
             #await asyncio.sleep_ms(100)
-            response = await arequests.post(url, headers=POST_HEADERS, data=_post_data)
+            response = await arequests.post(url, headers=_post_headers, data=_post_data)
             _logger.debug("{c}Post events answer{n}: {t}".format(c=colors.BOLD_GREEN,n=colors.NORMAL, t= await response.text()))
             if PINOUT.WDT_ENABLED:
                 cls.wdt.feed()
@@ -294,6 +416,10 @@ async def post_status_and_events(cls, force_post):
                 cls.status.update_url()
                 if force_post:
                     _logger.debug("post_status_and_events forced ...")
+                await _post_irrigation(cls)
+                if cls.status.has_rain_sensor:
+                    await _post_rain(cls)
+                await _post_power(cls)
                 await _post_status(cls)
                 await _post_events(cls)
                 await _post_traces(cls)
@@ -342,6 +468,8 @@ async def do_get_params(cls):
             if has_to_get_params:
                 cls.status.update_url()
                 await get_params(cls)
+                await get_downlink_messages(cls)
+                
                 got_params = True
     except Exception as ex:
         trace_error(ex, "do_get_params error")
@@ -352,10 +480,11 @@ async def do_get_params(cls):
 
 
 
-def init(umdc):
-    global _umdc
-    _umdc = umdc
+def init(planter):
+    global _planter
+    _planter = planter
     pass
 
 def disable():
+    global _enabled
     _enabled = False

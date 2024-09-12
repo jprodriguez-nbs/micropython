@@ -4,7 +4,7 @@ import utime
 import colors
 import arequests
 
-import uasyncio as asyncio
+import  asyncio
 
 print("Import umdc pinout")
 import umdc_pinout as PINOUT
@@ -233,7 +233,7 @@ class PlanterModemAsync(object):
 
 
 def test_async():
-    import uasyncio as asyncio
+    import  asyncio
     loop = asyncio.get_event_loop()
 
     m = PlanterModemAsync()
