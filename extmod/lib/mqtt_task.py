@@ -11,7 +11,7 @@ tools.free(True)
 #import esp32
 #import os
 
-import uasyncio as asyncio
+import  asyncio
 import logging
 import colors
 #import ubinascii

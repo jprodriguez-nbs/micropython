@@ -13,7 +13,7 @@ if PINOUT.IMPORT_FROM_APP:
 else:
     from networkmgr import NetworkMgr
     
-import uasyncio as asyncio
+import  asyncio
 
 
 import ujson

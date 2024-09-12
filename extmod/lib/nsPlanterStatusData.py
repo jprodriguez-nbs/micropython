@@ -70,8 +70,8 @@ class PlanterStatusData(NsDataClass):
                 KEY_ALARM)
     # datetime string is 23 char: '2021/11/06 23:34:08.880'
     # sw_ver string is 8 char: xx.xx.xx
-    # fw_ver string is 8 char: xx.xx.xx
-    packstring = '23sBffffffffffi8s8s'
+    # fw_ver string is 44 char: v1.20.0-1041.g0313cdf76.dirty on 2024-02-02
+    packstring = '23sBffffffffffi8s44s'
     packlength = struct.calcsize(packstring) # 84 #bytes
 
     @property
@@ -286,8 +286,9 @@ class PlanterStatusData(NsDataClass):
         self.ipump = ipump
         self.alarm = alarm
         self.water_level_sensor_detected = False
-        self.sw_ver = sw_ver
-        self.fw_ver = fw_ver
+        
+        self.sw_ver = "{v:<8}".format(v=sw_ver[:8])
+        self.fw_ver = "{v:<44}".format(v=fw_ver[:44])
 
 
     def __repr__(self):
@@ -375,9 +376,9 @@ class PlanterStatusData(NsDataClass):
         if PlanterStatusData.KEY_ALARM in d:
             self.alarm = d[PlanterStatusData.KEY_ALARM]
         if PlanterStatusData.KEY_SW_VERSION in d:
-            self.sw_ver = d[PlanterStatusData.KEY_SW_VERSION]
+            self.sw_ver = "{v:<8}".format(v=d[PlanterStatusData.KEY_SW_VERSION][:8])
         if PlanterStatusData.KEY_FW_VERSION in d:
-            self.fw_ver = d[PlanterStatusData.KEY_FW_VERSION]
+            self.fw_ver = "{v:<44}".format(v=d[PlanterStatusData.KEY_FW_VERSION][:44])
 
     def from_bin(self, p):
         sw = nsClassWriter.StructWriter()

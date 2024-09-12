@@ -413,11 +413,13 @@ class Modem():
     
     def connect(self, apn="clnxpt.vf.global", user="Portugal", pwd="1234RTU"):
         (sync, status) = self.command('AT')
-        max_cycles = 10
+        max_cycles = 4
         idx = 0
-        while sync is False:
+        while sync is False and idx<max_cycles:
             press_modem_powerkey()
             sync = self.command('AT',4)
+            sync = self.command('AT',4)
+            idx = idx + 1
         
         if sync is False:
             machine.reset()

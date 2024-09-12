@@ -12,7 +12,7 @@ from uasyncio.stream import Stream
 from uasyncio import core
 from uerrno import EINPROGRESS
 import usocket as socket
-import ssl
+import ussl
 
 full_debug = False
 
@@ -38,7 +38,7 @@ def open_connection(host, port):
     
             
     if full_debug: print("Wrap raw socket in SSL socket")
-    ssls = ssl.wrap_socket(s, server_hostname=host)  # Wrap raw socket in SSL socket
+    ssls = ussl.wrap_socket(s, server_hostname=host)  # Wrap raw socket in SSL socket
     if full_debug: print("Create uasyncio stream with the SSL socket")
     ss = uasyncio.stream.Stream(ssls)
     
@@ -94,7 +94,7 @@ async def request(
     if proto == "http:":
         port = 80
     elif proto == "https:":
-        # import ssl
+        # import ussl
         port = 443
         is_ssl = True
     else:

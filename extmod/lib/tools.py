@@ -7,38 +7,8 @@ import flashbdev
 import uos as os
 import gc
 import os
-import esp32
-import micropython
-import utime
 
-import umdc_pinout as PINOUT
-from constants import *
-import colors
-
-
-def get_parts(data):
-    parts = None
-    try:
-        if data is None or len(data)<2:
-            # Invalid length
-            return None
-        
-        if isinstance(data, (bytes, bytearray)):
-            data = data.decode('utf-8')
-        
-        if data[0] != '{' or data[-1] != '}':
-            # Invalid brackets
-            return None
-        
-        inner_data = data[1:-1]
-        aux = inner_data.split(';')
-        parts = [i.strip() for i in aux]
-    except Exception as E:
-        debug_msg = "tools.get_parts error: {e}".format(e=str(E))
-        print(debug_msg)
-        pass
-    return parts
-
+import planter_pinout as PINOUT
 
 def check_mpy():
     sys_mpy = sys.implementation._mpy
@@ -134,117 +104,82 @@ def format_fs():
     os.VfsLfs2.mkfs(flashbdev.bdev)
     os.mount(flashbdev.bdev, '/')
 
-_ts_last_mem_check = 0
-_last_free_mem = 0
-
-
 def free(full=False):
-    global _last_free_mem
-    global _ts_last_mem_check
     gc.collect()
-    
-    su = micropython.stack_use()
-    ts_now = utime.ticks_us()
-    delta = utime.ticks_diff(ts_now, _ts_last_mem_check)
-    _ts_last_mem_check = ts_now
-    
-    F = gc.mem_free()   # Free memory
-    A = gc.mem_alloc()  # Allocated memory (used)
-    T = F+A             # Total memory
-    P = '{0:.2f}%'.format(F/T*100)  # Percentage free
-    
-    if F != _last_free_mem:
-        full = True
-        if _last_free_mem<F:
-            c = colors.BOLD_GREEN
-        else:
-            c = colors.BOLD_RED
-        print("Free memory has changed from {f_start} to {c}{f_end}{n}".format(c=c, n=colors.NORMAL, f_start=_last_free_mem, f_end=F))
-        _last_free_mem = F
-    
-    if full:
-        micropython.mem_info()
-        esp32.idf_heap_info(esp32.HEAP_DATA)
-        r= ('Total:{0} Free:{1} ({2}) - Stack use {3} - Elapsed since last check {4} [ms]'.format(T,F,P,su,delta/1000))
-        print (r)
-    return (T,F,A,su)
+    F = gc.mem_free()
+    A = gc.mem_alloc()
+    T = F+A
+    P = '{0:.2f}%'.format(F/T*100)
+    if not full: return P
+    else : return ('Total:{0} Free:{1} ({2})'.format(T,F,P))
 
 def df():
     s = os.statvfs('//')
     return ('{0} MB'.format((s[0]*s[3])/1048576))
 
-def remove_messages_files(bRemove=True):
+def remove_irrigation_files(bRemove=True):
     
     if bRemove:
         try:
-            os.remove(FN_STORED_MQTT_MESSAGES)
+            os.remove(PINOUT.IRRIGATION_DATA_FN)
+        except:
+            pass
+
+        try:
+            os.remove(PINOUT.IRRIGATION_COMMUNICATION_REGISTER_FN)
         except:
             pass
 
     try:
-        with open(FN_STORED_MQTT_MESSAGES, "ab") as f:
+        with open(PINOUT.IRRIGATION_DATA_FN, "ab") as f:
+            # Just create the file
+            pass
+    except:
+        pass
+
+    try:
+        with open(PINOUT.IRRIGATION_COMMUNICATION_REGISTER_FN, "ab") as f:
             # Just create the file
             pass
     except:
         pass
 
 
-
-
-
-
-def ensure_data_files():
-    remove_messages_files(False)
-
+def remove_rain_files(bRemove=True):
     
-def file_or_dir_exists(filename):
+    if bRemove:
+        try:
+            os.remove(PINOUT.RAIN_DATA_FN)
+        except:
+            pass
+
+        try:
+            os.remove(PINOUT.RAIN_COMMUNICATION_REGISTER_FN)
+        except:
+            pass
+
     try:
-        os.stat(filename)
-        return True
-    except OSError:
-        return False
-    
-def dir_exists(filename):
+        with open(PINOUT.RAIN_DATA_FN, "ab") as f:
+            # Just create the file
+            pass
+    except:
+        pass
+
     try:
-        return (os.stat(filename)[0] & 0x4000) != 0
-    except OSError:
-        return False
-        
-def file_exists(filename):
+        with open(PINOUT.RAIN_COMMUNICATION_REGISTER_FN, "ab") as f:
+            # Just create the file
+            pass
+    except:
+        pass
+
+def remove_data_files():
     try:
-        return (os.stat(filename)[0] & 0x4000) == 0
-    except OSError:
-        return False
+        os.remove('measures.dat')
+    except:
+        pass
 
-def remove_file(filename):
-    if file_exists(filename):
-        os.remove(filename)
-
-
-def do_reboot():
-    # Soft reset using deepsleep to really release memory
-    #machine.deepsleep(500)
-    print("Reset to release all resources")
-    from constants import FN_CHECK_UPDATE
-    import network
-    import utime
-    remove_file(FN_CHECK_UPDATE)
-    wlan_sta = network.WLAN(network.STA_IF)
-    wlan_sta.active(False)
-    utime.sleep(5)
-    machine.reset()
-
-
-def ping_payload(di_slave_ok):
-    (T,F,A,su) = free(False)
-    li_ping_payload = ['{ts};{T};{F};{A};{su}'.format(ts=utime.time(),T=T,F=F,A=A,su=su)]
-    # slaves status
-    for slave_id in di_slave_ok:
-        is_ok = 1 if di_slave_ok[slave_id] else 0
-        s ="{slave_id};{ok}".format(slave_id=slave_id, ok=is_ok)
-        li_ping_payload.append(s)
-    ping_payload = "{{{content}}}".format(content=';'.join(li_ping_payload))
-    return ping_payload    
+    remove_irrigation_files()
+    remove_rain_files()
 
 
 def set_version(v):
@@ -261,16 +196,9 @@ def get_version():
             return version
     return '0.0.0'
 
-def set_check_update():
-    fn = "check_update.dat"
-    if file_exists(fn) is False:
-        with open(fn, 'w') as f:
-            import utime
-            ts_now = utime.time()
-            f.write(str(ts_now))
-            
-def needs_to_check_update():
-    return file_exists(FN_CHECK_UPDATE)
+def ensure_data_files():
+    remove_irrigation_files(False)
+    remove_rain_files(False)
 
 def get_fw_version():
     t = os.uname()

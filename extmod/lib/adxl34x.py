@@ -597,9 +597,20 @@ class ADXL345:
     def sensorMotionThreshold(self, g):
         th = int(float(g) / float(0.0625))
         self.enable_freefall_detection(threshold=4,time=5)
-        #self.disable_freefall_detection()
-        self.enable_tap_detection(tap_count=1, threshold=th, duration = 10000)
-        self.enable_motion_detection(threshold=th)
+        if False:
+            try:
+                self.disable_freefall_detection()
+            except Exception as ex:
+                self.logger.exc(ex, "Failed to disable_freefall_detection")
+        try:
+            self.enable_tap_detection(tap_count=1, threshold=th, duration = 10000)
+        except Exception as ex:
+            self.logger.exc(ex, "Failed to enable_tap_detection")
+            
+        try:            
+            self.enable_motion_detection(threshold=th)
+        except Exception as ex:
+            self.logger.exc(ex, "Failed to enable_motion_detection")
 
     def sensorImpactThreshold(self, th):
         

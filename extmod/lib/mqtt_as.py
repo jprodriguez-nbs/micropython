@@ -11,7 +11,7 @@ import ustruct as struct
 
 gc.collect()
 from ubinascii import hexlify
-import uasyncio as asyncio
+import  asyncio
 from uasyncio import core
 #import ssl
 

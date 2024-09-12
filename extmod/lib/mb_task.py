@@ -1,6 +1,6 @@
 import logging
 import machine
-import uasyncio as asyncio
+import  asyncio
 import gc
 gc.collect()
 from uModBus.async_serial import AsyncSerial
