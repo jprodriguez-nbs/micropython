@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        ".fantomasignore": "ignore",
+        "runtime.h": "c",
+        "nimble_port.h": "c"
+    }
+}

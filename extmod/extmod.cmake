@@ -18,6 +18,7 @@ set(MICROPY_SOURCE_EXTMOD
     ${MICROPY_EXTMOD_DIR}/machine_signal.c
     ${MICROPY_EXTMOD_DIR}/machine_spi.c
     ${MICROPY_EXTMOD_DIR}/machine_uart.c
+    ${MICROPY_EXTMOD_DIR}/machine_usb_device.c
     ${MICROPY_EXTMOD_DIR}/machine_wdt.c
     ${MICROPY_EXTMOD_DIR}/modbluetooth.c
     ${MICROPY_EXTMOD_DIR}/modframebuf.c
@@ -39,14 +40,16 @@ set(MICROPY_SOURCE_EXTMOD
     ${MICROPY_EXTMOD_DIR}/modre.c
     ${MICROPY_EXTMOD_DIR}/modselect.c
     ${MICROPY_EXTMOD_DIR}/modsocket.c
-    ${MICROPY_EXTMOD_DIR}/modssl_axtls.c
-    ${MICROPY_EXTMOD_DIR}/modssl_mbedtls.c
+    ${MICROPY_EXTMOD_DIR}/modtls_axtls.c
+    ${MICROPY_EXTMOD_DIR}/modtls_mbedtls.c
     ${MICROPY_EXTMOD_DIR}/modtime.c
+    ${MICROPY_EXTMOD_DIR}/modvfs.c
     ${MICROPY_EXTMOD_DIR}/modwebsocket.c
     ${MICROPY_EXTMOD_DIR}/modwebrepl.c
     ${MICROPY_EXTMOD_DIR}/network_cyw43.c
     ${MICROPY_EXTMOD_DIR}/network_lwip.c
     ${MICROPY_EXTMOD_DIR}/network_ninaw10.c
+    ${MICROPY_EXTMOD_DIR}/network_ppp_lwip.c
     ${MICROPY_EXTMOD_DIR}/network_wiznet5k.c
     ${MICROPY_EXTMOD_DIR}/os_dupterm.c
     ${MICROPY_EXTMOD_DIR}/vfs.c
@@ -130,27 +133,27 @@ if(MICROPY_PY_BTREE)
         )
 
         target_include_directories(micropy_extmod_btree PRIVATE
-            ${MICROPY_LIB_BERKELEY_DIR}/PORT/include
+            ${MICROPY_LIB_BERKELEY_DIR}/include
         )
 
+        if(NOT BERKELEY_DB_CONFIG_FILE)
+            set(BERKELEY_DB_CONFIG_FILE "${MICROPY_DIR}/extmod/berkeley-db/berkeley_db_config_port.h")
+        endif()
+
         target_compile_definitions(micropy_extmod_btree PRIVATE
-            __DBINTERFACE_PRIVATE=1
-            mpool_error=printf
-            abort=abort_
-            "virt_fd_t=void*"
+            BERKELEY_DB_CONFIG_FILE="${BERKELEY_DB_CONFIG_FILE}"
         )
 
         # The include directories and compile definitions below are needed to build
         # modbtree.c and should be added to the main MicroPython target.
 
         list(APPEND MICROPY_INC_CORE
-            "${MICROPY_LIB_BERKELEY_DIR}/PORT/include"
+            "${MICROPY_LIB_BERKELEY_DIR}/include"
         )
 
         list(APPEND MICROPY_DEF_CORE
             MICROPY_PY_BTREE=1
-            __DBINTERFACE_PRIVATE=1
-            "virt_fd_t=void*"
+            BERKELEY_DB_CONFIG_FILE="${BERKELEY_DB_CONFIG_FILE}"
         )
 
         list(APPEND MICROPY_SOURCE_EXTMOD
@@ -273,11 +276,14 @@ if(MICROPY_PY_LWIP)
     target_sources(micropy_lib_lwip INTERFACE
         ${MICROPY_DIR}/shared/netutils/netutils.c
         ${MICROPY_LIB_LWIP_DIR}/apps/mdns/mdns.c
+        ${MICROPY_LIB_LWIP_DIR}/apps/mdns/mdns_domain.c
+        ${MICROPY_LIB_LWIP_DIR}/apps/mdns/mdns_out.c
         ${MICROPY_LIB_LWIP_DIR}/core/def.c
         ${MICROPY_LIB_LWIP_DIR}/core/dns.c
         ${MICROPY_LIB_LWIP_DIR}/core/inet_chksum.c
         ${MICROPY_LIB_LWIP_DIR}/core/init.c
         ${MICROPY_LIB_LWIP_DIR}/core/ip.c
+        ${MICROPY_LIB_LWIP_DIR}/core/ipv4/acd.c
         ${MICROPY_LIB_LWIP_DIR}/core/ipv4/autoip.c
         ${MICROPY_LIB_LWIP_DIR}/core/ipv4/dhcp.c
         ${MICROPY_LIB_LWIP_DIR}/core/ipv4/etharp.c
@@ -308,6 +314,32 @@ if(MICROPY_PY_LWIP)
         ${MICROPY_LIB_LWIP_DIR}/core/timeouts.c
         ${MICROPY_LIB_LWIP_DIR}/core/udp.c
         ${MICROPY_LIB_LWIP_DIR}/netif/ethernet.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/auth.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/ccp.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/chap-md5.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/chap_ms.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/chap-new.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/demand.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/eap.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/ecp.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/eui64.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/fsm.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/ipcp.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/ipv6cp.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/lcp.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/magic.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/mppe.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/multilink.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/polarssl/md5.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/pppapi.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/ppp.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/pppcrypt.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/pppoe.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/pppol2tp.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/pppos.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/upap.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/utils.c
+        ${MICROPY_LIB_LWIP_DIR}/netif/ppp/vj.c
     )
 
     list(APPEND MICROPY_INC_CORE

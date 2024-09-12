@@ -36,7 +36,7 @@ import makeqstrdata as qstrutil
 
 # MicroPython constants
 MPY_VERSION = 6
-MPY_SUB_VERSION = 2
+MPY_SUB_VERSION = 3
 MP_CODE_BYTECODE = 2
 MP_CODE_NATIVE_VIPER = 4
 MP_NATIVE_ARCH_X86 = 1
@@ -52,6 +52,7 @@ MP_SCOPE_FLAG_VIPERRELOC = 0x10
 MP_SCOPE_FLAG_VIPERRODATA = 0x20
 MP_SCOPE_FLAG_VIPERBSS = 0x40
 MP_SMALL_INT_BITS = 31
+MP_FUN_TABLE_MP_TYPE_TYPE_OFFSET = 73
 
 # ELF constants
 R_386_32 = 1
@@ -68,6 +69,7 @@ R_XTENSA_PLT = 6
 R_386_GOTOFF = 9
 R_386_GOTPC = 10
 R_ARM_THM_CALL = 10
+R_XTENSA_ASM_EXPAND = 11
 R_XTENSA_DIFF32 = 19
 R_XTENSA_SLOT0_OP = 20
 R_ARM_BASE_PREL = 25  # aka R_ARM_GOTPC
@@ -561,9 +563,14 @@ def do_relocation_text(env, text_addr, r):
         reloc = addr - r_offset
         reloc_type = "xtensa_l32r"
 
-    elif env.arch.name == "EM_XTENSA" and r_info_type in (R_XTENSA_DIFF32, R_XTENSA_PDIFF32):
+    elif env.arch.name == "EM_XTENSA" and r_info_type in (
+        R_XTENSA_DIFF32,
+        R_XTENSA_PDIFF32,
+        R_XTENSA_ASM_EXPAND,
+    ):
         if s.section.name.startswith(".text"):
-            # it looks like R_XTENSA_[P]DIFF32 into .text is already correctly relocated
+            # it looks like R_XTENSA_[P]DIFF32 into .text is already correctly relocated,
+            # and expand relaxations cannot occur in non-executable sections.
             return
         assert 0
 
@@ -754,7 +761,7 @@ def link_objects(env, native_qstr_vals_len):
     # Resolve unknown symbols
     mp_fun_table_sec = Section(".external.mp_fun_table", b"", 0)
     fun_table = {
-        key: 67 + idx
+        key: MP_FUN_TABLE_MP_TYPE_TYPE_OFFSET + idx
         for idx, key in enumerate(
             [
                 "mp_type_type",
@@ -766,6 +773,7 @@ def link_objects(env, native_qstr_vals_len):
                 "mp_type_fun_builtin_2",
                 "mp_type_fun_builtin_3",
                 "mp_type_fun_builtin_var",
+                "mp_type_Exception",
                 "mp_stream_read_obj",
                 "mp_stream_readinto_obj",
                 "mp_stream_unbuffered_readline_obj",
